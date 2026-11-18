@@ -1648,7 +1648,13 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
   const API = 'https://sheets.googleapis.com/v4/spreadsheets/';
   const SCOPES = 'https://www.googleapis.com/auth/spreadsheets openid email';
   let token = null, tokenExp = 0, tokenClient = null, email = '', started = false;
-  const remembered = (() => { try { return localStorage.getItem('t39gEmail') || ''; } catch (e) { return ''; } })();
+  let remembered = (() => { try { return localStorage.getItem('t39gEmail') || ''; } catch (e) { return ''; } })();
+  /* The Google sign-in (an access token that ends after about an hour) is kept in this browser until it ends,
+     so reloading or opening a new tab doesn't sign you out. Signing out deletes it. */
+  const SESSION_KEY = 't39gSession';
+  const saveSession = () => { try { localStorage.setItem(SESSION_KEY, JSON.stringify({ t: token, exp: tokenExp, email })); } catch (e) {} };
+  const dropSession = () => { try { localStorage.removeItem(SESSION_KEY); } catch (e) {} };
+  const savedSession = (() => { try { const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); return s && s.t && s.exp > Date.now() + 60000 ? s : null; } catch (e) { return null; } })();
 
   /* ----- Google Sheets API ----- */
   const signedOut = msg => ({ code: 'signed_out', message: msg || 'Sign in with Google to continue.' });
@@ -1656,7 +1662,7 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
     if (!token || Date.now() > tokenExp - 20000) { askSignIn('Your Google sign-in has expired. Sign in again to keep going.'); throw signedOut('Your Google sign-in has expired. Press Sign in with Google.'); }
     const r = await fetch(url, { method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     const text = await r.text(); let j = null; try { j = text ? JSON.parse(text) : {}; } catch (e) { j = null; }
-    if (r.status === 401) { token = null; askSignIn('Your Google sign-in has expired. Sign in again to keep going.'); throw signedOut(); }
+    if (r.status === 401) { token = null; dropSession(); askSignIn('Your Google sign-in has expired. Sign in again to keep going.'); throw signedOut(); }
     if (!r.ok) { const m = (j && j.error && j.error.message) || text || ('HTTP ' + r.status); throw { code: r.status === 403 || r.status === 404 ? 'forbidden' : 'tool_error', message: m }; }
     if (!j) throw { code: 'tool_error', message: 'Unexpected reply from Google Sheets' };
     return j;
@@ -1787,11 +1793,16 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
   function signIn() {
     if (!CFG.clientId) { $('banner').innerHTML = '<div class="banner err">Setup isn’t finished: add the Google client ID to config.js (see the README).</div>'; return; }
     if (!window.google || !google.accounts || !google.accounts.oauth2) { toast('Google sign-in is still loading — try again in a moment'); return; }
-    if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CFG.clientId, scope: SCOPES, callback: onToken, error_callback: onSignInError });
+    ensureClient();
     renewing = true;
     tokenClient.requestAccessToken({ prompt: token || remembered ? '' : 'consent', login_hint: email || remembered || undefined });
   }
   let renewing = false;
+  function ensureClient() {
+    if (!tokenClient && window.google && google.accounts && google.accounts.oauth2)
+      tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CFG.clientId, scope: SCOPES, callback: onToken, error_callback: onSignInError });
+    return tokenClient;
+  }
   function onSignInError(err) {
     renewing = false;
     const t = (err && err.type) || '';
@@ -1805,14 +1816,18 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
   loadAll = function () { if (!token || Date.now() > tokenExp - 20000) { askSignIn(token ? 'Your Google sign-in has expired (it lasts about an hour). Sign in again to keep going.' : ''); return Promise.resolve(); } return baseLoadAll(); };
   // A sign-in lasts about an hour. In its last 10 minutes, the next click anywhere quietly renews it
   // (browsers only allow the Google window to open from a click).
-  document.addEventListener('pointerdown', () => {
-    if (!token || renewing || !tokenClient || tokenExp - Date.now() > 10 * 60 * 1000) return;
+  // If you've signed in on this browser before and the sign-in has ended, your first click anywhere signs you back in.
+  document.addEventListener('pointerdown', e => {
+    if (renewing || !CFG.clientId || e.target.closest('#gBtn, [data-gsignin]')) return;
+    const expiring = token && tokenExp - Date.now() < 10 * 60 * 1000, ended = !token && remembered;
+    if (!expiring && !ended) return;
+    if (!ensureClient()) return;
     renewing = true;
-    try { tokenClient.requestAccessToken({ prompt: '', login_hint: email || remembered || undefined }); } catch (e) { renewing = false; }
+    try { tokenClient.requestAccessToken({ prompt: '', login_hint: email || remembered || undefined }); } catch (x) { renewing = false; }
   }, true);
   function signOut() {
     if (token && window.google && google.accounts) google.accounts.oauth2.revoke(token, () => {});
-    token = null; email = ''; try { localStorage.removeItem('t39gEmail'); } catch (e) {}
+    token = null; email = ''; remembered = ''; dropSession(); try { localStorage.removeItem('t39gEmail'); } catch (e) {}
     paintBtn(); askSignIn('Signed out.');
   }
   async function onToken(resp) {
@@ -1821,10 +1836,16 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
     if (!google.accounts.oauth2.hasGrantedAllScopes(resp, 'https://www.googleapis.com/auth/spreadsheets')) { askSignIn('Please tick “See, edit, create and delete your Google Sheets” when Google asks — the tracker can’t read or save without it.'); return; }
     const wasSignedIn = !!token && !!D;
     token = resp.access_token; tokenExp = Date.now() + (+resp.expires_in || 3600) * 1000;
-    clearTimeout(onToken.warn); onToken.warn = setTimeout(() => toast('Your Google sign-in ends in a few minutes — click anywhere on the page to renew it'), Math.max(0, tokenExp - Date.now() - 5 * 60000));
-    if (wasSignedIn) { paintBtn(); status('ok', 'Sign-in renewed ' + nowT()); return; }   // quiet renewal: keep everything on screen
+    if (wasSignedIn) { saveSession(); armWarn(); paintBtn(); status('ok', 'Sign-in renewed ' + nowT()); return; }   // quiet renewal: keep everything on screen
     try { const u = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json()); email = String(u.email || '').toLowerCase(); } catch (e) { email = ''; }
     try { if (email) localStorage.setItem('t39gEmail', email); } catch (e) {}
+    saveSession();
+    await startSession();
+  }
+  function armWarn() { clearTimeout(armWarn.t); armWarn.t = setTimeout(() => toast('Your Google sign-in ends in a few minutes — click anywhere on the page to renew it'), Math.max(0, tokenExp - Date.now() - 5 * 60000)); }
+  /** Loads the tracker with the current sign-in (fresh, or kept from earlier in this browser). */
+  async function startSession() {
+    armWarn();
     paintBtn();
     mcp = shimMcp;
     if (CFG.bucketSheetId) { RDB = shimDb; rbSheet = null; }
@@ -1854,7 +1875,10 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
   /* ----- start ----- */
   paintBtn();
   $('attList').innerHTML = '<div class="card empty">Sign in with Google to load the Team 39 sheet.</div>';
-  askSignIn(CFG.clientId ? '' : 'Setup isn’t finished: add the Google client ID to config.js (see the README).');
+  if (CFG.clientId && savedSession) {   // still signed in from earlier in this browser: carry on without asking
+    token = savedSession.t; tokenExp = savedSession.exp; email = savedSession.email || remembered;
+    startSession();
+  } else askSignIn(CFG.clientId ? (remembered ? 'Your Google sign-in has ended. Click anywhere, or press Sign in with Google, to continue as ' + remembered + '.' : '') : 'Setup isn’t finished: add the Google client ID to config.js (see the README).');
   if (!CFG.bucketSheetId) console.warn('T39: no bucketSheetId in config.js — Manual review picks cannot be saved.');
 })();
 </script>
