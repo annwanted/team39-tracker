@@ -1962,12 +1962,40 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
     paintBtn(); askSignIn('Signed out.');
   }
   // A sign-in lasts about an hour; a few minutes before it ends, offer a one-click renewal (it reloads the page through Google).
-  function armWarn() {
-    clearTimeout(armWarn.t);
-    armWarn.t = setTimeout(() => {
-      $('banner').insertAdjacentHTML('afterbegin', '<div class="banner warn row" id="renewBar"><span>Your Google sign-in ends in a few minutes. Save anything you’re typing, then renew it.</span><div class="spacer"></div><button type="button" class="btn sm primary" data-gsignin>Renew sign-in</button></div>');
-    }, Math.max(0, tokenExp - Date.now() - 5 * 60000));
+  /* Auto-renew: from 4 minutes before the hour ends, the page renews the sign-in by itself (a quick trip to Google and
+     back, about a second) as soon as nothing would be lost: no box being typed in, no unsaved review, post or list, and
+     nothing saving. If something is in progress it waits, and shows a Renew bar once so you can choose the moment. */
+  function hasUnsavedWork() {
+    const a = document.activeElement;
+    if (a && a !== document.body && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !a.closest('#banner')) return true;   // typing or choosing right now
+    const val = id => { const el = $(id); return !!(el && String(el.value || '').trim()); };
+    const shown = id => { const el = $(id); return !!(el && !el.hidden); };
+    try {
+      if (val('mEp') || val('mNotes') || (typeof mEdit !== 'undefined' && mEdit)) return true;               // My work: a post or edit not saved yet
+      if (shown('qaForm') || (shown('qaBulk') && typeof B !== 'undefined' && B.items.length)) return true;      // QA reviews: a form or bulk list open
+      if (typeof rbDrafts !== 'undefined' && Object.values(rbDrafts).some(d => d.on)) return true;              // Manual review: ticked, unsaved reviews
+      if ((typeof mBusy !== 'undefined' && mBusy) || (typeof rbBusy !== 'undefined' && rbBusy) || (typeof rbSaving !== 'undefined' && rbSaving)) return true;   // saving right now
+    } catch (e) { return true; }
+    return false;
   }
+  let warned = false;
+  function renewIfIdle() {
+    if (!token) return;
+    const left = tokenExp - Date.now();
+    if (left > 4 * 60000) return;                    // not time yet
+    if (document.hidden && left > 30000) return;     // in a background tab: renew when it's looked at again (or right at the end)
+    if (!hasUnsavedWork()) { status('busy', 'Renewing your Google sign-in…'); signIn(); return; }
+    if (!warned && !$('renewBar')) {
+      warned = true;
+      $('banner').insertAdjacentHTML('afterbegin', '<div class="banner warn row" id="renewBar"><span>Your Google sign-in is about to end. It will renew by itself once you finish what you’re doing — or renew it now (save your work first).</span><div class="spacer"></div><button type="button" class="btn sm primary" data-gsignin>Renew now</button></div>');
+    }
+  }
+  function armWarn() {
+    clearInterval(armWarn.t); warned = false;
+    armWarn.t = setInterval(renewIfIdle, 15000);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) renewIfIdle(); });
+  window.addEventListener('focus', renewIfIdle);
   /** Loads the tracker with the current sign-in (fresh, or kept from earlier in this browser). */
   async function startSession() {
     armWarn();
@@ -2014,6 +2042,7 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
       token = savedSession.t; tokenExp = savedSession.exp; email = savedSession.email || remembered;
       return startSession();
     }
+    if (CFG.clientId && remembered) { status('busy', 'Signing you back in…'); return signIn(); }   // signed in here before: renew without asking (Sign out stops this)
     askSignIn(CFG.clientId ? (remembered ? 'Your Google sign-in has ended (it lasts about an hour). Press Sign in with Google to continue as ' + remembered + '.' : '') : 'Setup isn’t finished: add the Google client ID to config.js (see the README).');
   })();
   if (!CFG.bucketSheetId) console.warn('T39: no bucketSheetId in config.js — Manual review picks cannot be saved.');
