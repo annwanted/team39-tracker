@@ -1762,6 +1762,8 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
     return baseErrText(e);
   };
   errBanner = function (e) {
+    const c = e && e.code;
+    if (c === 'signed_out' || c === 'no_mcp') { setTimeout(() => askSignIn(token ? 'Your Google sign-in has expired (it lasts about an hour). Sign in again to keep going.' : ''), 0); return ''; }
     return '<div class="banner err">' + esc(errText(e)) + '<div class="row" style="margin-top:8px"><button type="button" class="btn sm primary" data-gsignin>Sign in with Google</button><button type="button" class="btn sm" data-reload>Try again</button></div></div>';
   };
 
@@ -1785,19 +1787,42 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
   function signIn() {
     if (!CFG.clientId) { $('banner').innerHTML = '<div class="banner err">Setup isn’t finished: add the Google client ID to config.js (see the README).</div>'; return; }
     if (!window.google || !google.accounts || !google.accounts.oauth2) { toast('Google sign-in is still loading — try again in a moment'); return; }
-    if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CFG.clientId, scope: SCOPES, callback: onToken, error_callback: err => toast('Sign-in didn’t finish: ' + ((err && err.type) || 'closed')) });
-    tokenClient.requestAccessToken({ prompt: token || remembered ? '' : 'consent', login_hint: remembered || undefined });
+    if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CFG.clientId, scope: SCOPES, callback: onToken, error_callback: onSignInError });
+    renewing = true;
+    tokenClient.requestAccessToken({ prompt: token || remembered ? '' : 'consent', login_hint: email || remembered || undefined });
   }
+  let renewing = false;
+  function onSignInError(err) {
+    renewing = false;
+    const t = (err && err.type) || '';
+    if (token && Date.now() < tokenExp) return;   // a background renewal failed but the current sign-in still works
+    if (t === 'popup_failed_to_open') askSignIn('Your browser blocked the Google sign-in window. Allow pop-ups for annwanted.github.io (the icon at the right of the address bar), then press Sign in with Google again.');
+    else if (t === 'popup_closed') askSignIn('The Google sign-in window was closed before you finished. Press Sign in with Google to try again.');
+    else askSignIn('Google sign-in didn’t finish' + (t ? ' (' + t + ')' : '') + '. Press Sign in with Google to try again.');
+  }
+  // Nothing can be read before sign-in: Reload, the Sheet menu and the 30-minute refresh start the sign-in instead of failing.
+  const baseLoadAll = loadAll;
+  loadAll = function () { if (!token || Date.now() > tokenExp - 20000) { askSignIn(token ? 'Your Google sign-in has expired (it lasts about an hour). Sign in again to keep going.' : ''); return Promise.resolve(); } return baseLoadAll(); };
+  // A sign-in lasts about an hour. In its last 10 minutes, the next click anywhere quietly renews it
+  // (browsers only allow the Google window to open from a click).
+  document.addEventListener('pointerdown', () => {
+    if (!token || renewing || !tokenClient || tokenExp - Date.now() > 10 * 60 * 1000) return;
+    renewing = true;
+    try { tokenClient.requestAccessToken({ prompt: '', login_hint: email || remembered || undefined }); } catch (e) { renewing = false; }
+  }, true);
   function signOut() {
     if (token && window.google && google.accounts) google.accounts.oauth2.revoke(token, () => {});
     token = null; email = ''; try { localStorage.removeItem('t39gEmail'); } catch (e) {}
     paintBtn(); askSignIn('Signed out.');
   }
   async function onToken(resp) {
-    if (!resp || resp.error || !resp.access_token) { toast('Sign-in didn’t finish'); return; }
-    if (!google.accounts.oauth2.hasGrantedAllScopes(resp, 'https://www.googleapis.com/auth/spreadsheets')) { askSignIn('Please allow access to Google Sheets — the tracker can’t read or save without it.'); return; }
+    renewing = false;
+    if (!resp || resp.error || !resp.access_token) { onSignInError({ type: resp && resp.error }); return; }
+    if (!google.accounts.oauth2.hasGrantedAllScopes(resp, 'https://www.googleapis.com/auth/spreadsheets')) { askSignIn('Please tick “See, edit, create and delete your Google Sheets” when Google asks — the tracker can’t read or save without it.'); return; }
+    const wasSignedIn = !!token && !!D;
     token = resp.access_token; tokenExp = Date.now() + (+resp.expires_in || 3600) * 1000;
-    clearTimeout(onToken.warn); onToken.warn = setTimeout(() => toast('Your Google sign-in ends in 2 minutes — press Sign in again in the top bar to stay signed in'), Math.max(0, tokenExp - Date.now() - 120000));
+    clearTimeout(onToken.warn); onToken.warn = setTimeout(() => toast('Your Google sign-in ends in a few minutes — click anywhere on the page to renew it'), Math.max(0, tokenExp - Date.now() - 5 * 60000));
+    if (wasSignedIn) { paintBtn(); status('ok', 'Sign-in renewed ' + nowT()); return; }   // quiet renewal: keep everything on screen
     try { const u = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json()); email = String(u.email || '').toLowerCase(); } catch (e) { email = ''; }
     try { if (email) localStorage.setItem('t39gEmail', email); } catch (e) {}
     paintBtn();
