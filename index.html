@@ -1,0 +1,1836 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<script src="config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head><body>
+<title>Team 39 Tracker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* Layout: sticky header + tabs; main column with the daily report docked on the right (stacks on top on phones). */
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --ink:#151821; --muted:#636b7c; --line:#e2e5eb; --soft:#eef1f5;
+  --accent:#2f62d9; --accent-soft:#e6edfb; --ok:#13795b; --ok-soft:#e1f3ec; --warn:#a8530b; --warn-soft:#fcefdf;
+  --err:#bf3412; --err-soft:#fbe9e5; --live:#b4232a;
+  --font-body:Inter,system-ui,-apple-system,"Segoe UI",sans-serif; --font-head:"Space Grotesk",Inter,system-ui,sans-serif;
+  --radius:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1116; --panel:#171a21; --ink:#e6e8ee; --muted:#98a0b0; --line:#2a2f3a; --soft:#1f232c;
+  --accent:#7aa0ff; --accent-soft:#1c2840; --ok:#4cc79a; --ok-soft:#14302a; --warn:#f0a35a; --warn-soft:#382816;
+  --err:#ff8b78; --err-soft:#3b1d19; --live:#ff7a7f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1116; --panel:#171a21; --ink:#e6e8ee; --muted:#98a0b0; --line:#2a2f3a; --soft:#1f232c;
+  --accent:#7aa0ff; --accent-soft:#1c2840; --ok:#4cc79a; --ok-soft:#14302a; --warn:#f0a35a; --warn-soft:#382816;
+  --err:#ff8b78; --err-soft:#3b1d19; --live:#ff7a7f; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--font-body);margin:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--panel)}
+.gutter{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:6;background:var(--panel);border-bottom:1px solid var(--line)}
+.hbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-block:12px}
+h1{font:700 18px/1.2 var(--font-head);margin:0;letter-spacing:-.01em}
+.status{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;min-width:0}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}.dot.busy{background:var(--warn);animation:pulse 1s infinite}.dot.err{background:var(--err)}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.dot.busy{animation:none}}
+.spacer{flex:1}
+.sheetpick{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.badge{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:9px;background:var(--soft);color:var(--muted)}
+.badge.live{background:var(--err-soft);color:var(--live)}
+nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{border:0;background:none;padding:10px 12px;color:var(--muted);font:500 14px var(--font-body);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+nav button.on{color:var(--ink);border-color:var(--accent)}
+nav .count{display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:var(--err-soft);color:var(--err);font-size:11px;font-weight:600;margin-left:4px}
+main{max-width:1380px;margin:0 auto;padding-block:18px 60px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media (max-width:1000px){.layout{grid-template-columns:minmax(0,1fr)}.report{order:-1;position:static!important}}
+.content{min-width:0}
+section{display:none}section.on{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:8px;font:500 13px var(--font-body);cursor:pointer}
+.btn:hover{background:var(--soft)}.btn:disabled{opacity:.5;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--err)}.btn.armed{background:var(--err);border-color:var(--err);color:#fff}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,nav button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0}
+a{color:var(--accent)}
+.muted{color:var(--muted)}.small{font-size:12px}
+.banner{border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px}
+.banner.err{background:var(--err-soft);color:var(--err)}.banner.warn{background:var(--warn-soft);color:var(--warn)}.banner.info{background:var(--accent-soft);color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px}
+.kpi b{display:block;font:700 22px var(--font-head);font-variant-numeric:tabular-nums}.kpi span{color:var(--muted);font-size:12px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13px}
+th{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
+td.num,th.num{text-align:right}
+.tablewrap{overflow-x:auto;min-width:0}
+.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}
+.person{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.person.present{border-color:var(--ok);background:var(--ok-soft)}
+.ptop{display:flex;gap:10px;align-items:center}
+.ptop input[type=checkbox]{width:20px;height:20px;accent-color:var(--ok);flex:none;margin:0}
+.who{flex:1;min-width:0}.who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9px;background:var(--soft);color:var(--muted);white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}.tag.off{background:var(--warn-soft);color:var(--warn)}.tag.bad{background:var(--err-soft);color:var(--err)}
+.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.fields label,.mins label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--muted);min-width:0}
+.fields input,.mins input{width:100%;padding:4px 6px;font-size:13px}
+.quota{display:flex;flex-direction:column;gap:4px}
+.qline{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px;color:var(--muted)}
+.qline b{font:700 16px var(--font-head);color:var(--ink);font-variant-numeric:tabular-nums}
+.qbar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden}.qbar i{display:block;height:100%;background:var(--warn);border-radius:3px}
+.quota.met .qbar i{background:var(--ok)}
+.mins{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;border-top:1px dashed var(--line);padding-top:8px}
+.report{position:sticky;top:calc(env(safe-area-inset-top,0px) + 100px)}
+.report h2{font:700 15px var(--font-head);margin:0}
+.rep td{border:0;padding:3px 0;font-size:13px}
+.rep td.v{text-align:right;font-weight:700;padding-right:10px;white-space:nowrap;width:1%}
+.rep tr.head td{font-weight:700;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.rep tr.ded td{color:var(--warn)}.rep tr.fb td{padding-top:8px;border-top:1px solid var(--line)}
+.chartbox{position:relative;height:320px}
+.chip{border:1px solid var(--line);border-radius:16px;padding:3px 10px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--panel);color:var(--ink)}
+.chip i{width:9px;height:9px;border-radius:50%;display:inline-block}.chip.off{opacity:.45}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:10px 0}
+.qgrid label,.qblock{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+.qgrid .wide{grid-column:span 2}
+@media (max-width:640px){.qgrid .wide{grid-column:auto}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.mins{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.qgrid input,.qgrid select,.qgrid textarea,.qblock textarea{width:100%}
+.qgrid textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;resize:vertical}
+td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+tr.marker td{color:var(--muted);background:var(--soft)}
+tr.editing td{background:var(--accent-soft)}
+tr.dayhead td{background:var(--soft);border-top:2px solid var(--line);padding-block:8px}
+#bTable td{padding:4px 6px}#bTable select,#bTable input{font-size:12px;padding:3px 5px;width:100%;min-width:110px}
+#bTable td.ep{min-width:200px}#bTable tr.skip td{opacity:.55}
+#bTable select.bad{border-color:var(--warn);color:var(--warn)}
+.qgrid select.bad{border-color:var(--warn);color:var(--warn)}
+.qblock{margin-bottom:10px}
+.ellip{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+tr.pick{cursor:pointer}tr.pick:hover td{background:var(--soft)}
+details.grp{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel);overflow:hidden}
+details.grp summary{padding:9px 12px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.sev{font-size:11px;font-weight:600;padding:1px 8px;border-radius:9px;text-transform:uppercase;letter-spacing:.03em}
+.sev.error{background:var(--err-soft);color:var(--err)}.sev.warn{background:var(--warn-soft);color:var(--warn)}.sev.info{background:var(--accent-soft);color:var(--accent)}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20;max-width:90vw}
+.toast.show{opacity:1}
+.chip input{margin:0;accent-color:var(--accent)}
+tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
+.rbsave{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--soft)}
+#rbRows select,#rbRows input[type=text]{font-size:12px;padding:3px 5px;min-width:120px;width:100%}
+#rbRows select.bad{border-color:var(--warn);color:var(--warn)}
+#rbRows tr.ready td{background:var(--accent-soft)}
+#rbRows input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+</style>
+
+<header>
+  <div class="hbar gutter">
+    <h1>Team 39 Tracker</h1>
+    <div class="status"><span id="dot" class="dot busy"></span><span id="statusText">Connecting to Google Sheets…</span></div>
+    <div class="spacer"></div>
+    <label class="sheetpick">Sheet
+      <select id="sheetPick"><option value="test">Team 39 | Ann (TEST copy)</option><option value="live">Team 39 | Ann (original)</option></select>
+      <span id="sheetBadge" class="badge">Test</span>
+    </label>
+    <a class="btn sm" target="_blank" rel="noopener" href="https://claude.ai/settings/connectors" title="Sign in to Google through the Google Sheets connector in your claude.ai settings">Connect Google</a>
+    <a id="openSheet" class="btn sm" target="_blank" rel="noopener" href="#">Open sheet</a>
+    <button class="btn sm" id="reloadBtn" type="button">Reload</button>
+  </div>
+  <nav id="tabs" class="gutter">
+    <button data-t="mine" class="on" type="button">My work</button>
+    <button data-t="att" type="button">Attendance</button>
+    <button data-t="sched" type="button">Schedules</button>
+    <button data-t="perf" type="button">Performance</button>
+    <button data-t="qa" type="button">QA reviews</button>
+    <button data-t="rb" type="button">Manual review</button>
+    <button data-t="checks" type="button">Data checks <span id="checkCount" class="count" hidden></span></button>
+  </nav>
+</header>
+
+<main class="gutter"><div id="banner"></div><div class="layout"><div class="content">
+
+<section id="mine" class="on">
+  <div class="card row">
+    <label>I am <select id="meSel"><option value="">Choose your name…</option></select></label>
+    <label>From <input type="date" id="mFrom"></label>
+    <label>To <input type="date" id="mTo"></label>
+    <button class="btn sm" type="button" data-mshift="-1" aria-label="Previous period">‹</button>
+    <button class="btn sm" type="button" data-mshift="1" aria-label="Next period">›</button>
+    <button class="btn sm" type="button" data-mrange="0">Today</button>
+    <button class="btn sm" type="button" data-mrange="y">Yesterday</button>
+    <button class="btn sm" type="button" data-mrange="6">7 days</button>
+    <button class="btn sm" type="button" data-mrange="29">30 days</button>
+    <div class="spacer"></div>
+    <span class="muted small" id="mSynced"></span>
+    <button class="btn sm" type="button" id="mRefresh" hidden>Refresh</button>
+    <a id="mOpenTab" class="btn sm" target="_blank" rel="noopener" href="#" hidden>Open my tab</a>
+  </div>
+  <div id="mBanner"></div>
+  <div class="card" id="mForm" hidden>
+    <div class="row"><b id="mFormTitle">Post work</b><span class="muted small" id="mFormHint">Added to the end of your tab. The sheet stamps the time, and Main Tracker counts it.</span></div>
+    <div class="qgrid">
+      <label class="wide">Episode ID <span id="mEpHint">— paste several, one per line</span><textarea id="mEp" rows="3" spellcheck="false" placeholder="2026-11-14-004618Z-h2_0523-8b1c6466f0f5"></textarea></label>
+      <label class="wide">Task name<input id="mTask" list="mTaskList" spellcheck="false"><datalist id="mTaskList"></datalist></label>
+      <label>Type<select id="mType"></select></label>
+      <label>Shift<select id="mShift"></select></label>
+      <label>Labels count<input type="number" id="mLabels" min="0" step="1" inputmode="numeric"></label>
+      <label class="wide">Notes<input id="mNotes" placeholder="0:00 - what you saw"></label>
+    </div>
+    <div class="row">
+      <button type="button" class="btn primary" id="mPost">Post</button>
+      <button type="button" class="btn" id="mCancel" hidden>Cancel</button>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="mBreak">Log break</button>
+      <button type="button" class="btn" id="mEos">End of shift</button>
+    </div>
+  </div>
+  <div class="kpis" id="mKpis"></div>
+  <div class="card"><b>My entries</b> <span class="muted small" id="mCount"></span><div class="tablewrap" style="margin-top:8px"><table id="mRows"><tr><td class="empty">Choose your name to see your entries.</td></tr></table></div></div>
+  <p class="muted small">Your entries live in your own tab of the sheet (named after your LDAP). Date and Duration are the sheet’s formulas: the time is stamped when an entry is posted, and Duration runs to the next entry. Main Tracker counts DATA, TEXT LABELING and REVIEW entries on CORE HOURS. Only your latest entry can be removed, since removing one in the middle would leave a gap in your tab; fix older ones with Edit.</p>
+</section>
+
+<section id="att">
+  <div class="card row">
+    <label>Date <input type="date" id="attDate"></label>
+    <button class="btn sm" type="button" data-shift="-1">‹ Prev</button>
+    <button class="btn sm" type="button" data-shift="1">Next ›</button>
+    <button class="btn sm" type="button" id="todayBtn">Today</button>
+    <label class="small">Quota <input type="number" id="quotaIn" min="1" max="999" step="1" style="width:64px"> data QA / full shift</label>
+    <div class="spacer"></div>
+    <button class="btn sm" type="button" id="markAllBtn">Mark all present</button>
+    <button class="btn sm danger" type="button" id="clearAllBtn">Clear all</button>
+  </div>
+  <div class="kpis" id="attKpis"></div>
+  <div class="people" id="attList"><div class="card empty">Loading Main Tracker…</div></div>
+  <p class="muted small">Present = Time In is filled for that day in <b>Main Tracker</b>. Ticking fills Time In / Break / Time Out from the member's usual shift (Schedules); unticking clears them. Deductive minutes go into the day's editing feedback, coaching / huddle, text-label and review columns. Every other number on a card comes from the sheet's own formulas.</p>
+</section>
+
+<section id="sched">
+  <div class="card">
+    <div class="row" style="margin-bottom:8px"><b>Usual shifts</b><span class="muted small">Main Tracker rows 5 onward, columns C–E. Used when you tick someone present. Saves when you leave the box.</span></div>
+    <div class="tablewrap"><table id="schedTable"></table></div>
+  </div>
+</section>
+
+<section id="perf">
+  <div class="card">
+    <div class="row">
+      <label>From <input type="date" id="pFrom"></label>
+      <label>To <input type="date" id="pTo"></label>
+      <button class="btn sm" type="button" data-range="7">7 days</button>
+      <button class="btn sm" type="button" data-range="30">30 days</button>
+      <button class="btn sm" type="button" data-range="all">All</button>
+      <div class="spacer"></div>
+      <label>Show <select id="pMetric">
+        <option value="qa">Data QA</option><option value="hours">Working hours</option><option value="rate">Data QA per hour</option>
+        <option value="rev">Reviews</option><option value="score">QA score (%)</option></select></label>
+      <label>By <select id="pGroup"><option value="day">Day</option><option value="week">Week</option></select></label>
+    </div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" type="button" id="pAll">All</button><button class="btn sm" type="button" id="pNone">None</button><label class="small"><input type="checkbox" id="pTeam"> Team total only</label></div>
+    <div class="chips" id="pChips" style="margin-top:8px"></div>
+  </div>
+  <div class="kpis" id="perfKpis"></div>
+  <div class="card"><b id="perfTitle">Performance</b><div class="chartbox" style="margin-top:8px"><canvas id="perfChart"></canvas></div></div>
+  <div class="card"><b>Per member</b> <span class="muted small">— from Main Tracker day rows and the Reviewers Sheet</span><div class="tablewrap" style="margin-top:8px"><table id="perfTable"></table></div></div>
+</section>
+
+<section id="qa">
+  <div class="card row">
+    <label>From <input type="date" id="qFrom"></label>
+    <label>To <input type="date" id="qTo"></label>
+    <button class="btn sm" type="button" data-qrange="0">Today</button>
+    <button class="btn sm" type="button" data-qrange="6">7 days</button>
+    <button class="btn sm" type="button" data-qrange="29">30 days</button>
+    <label>Annotator <select id="qWho"><option value="">Everyone</option></select></label>
+    <div class="spacer"></div>
+    <button class="btn" type="button" id="qaBulkBtn">Bulk add</button>
+    <button class="btn primary" type="button" id="qaNewBtn">+ Log a review</button>
+  </div>
+  <div class="card" id="qaForm" hidden></div>
+  <div class="card" id="qaBulk" hidden></div>
+  <div class="card"><b>Data QA scores</b> <span class="muted small">— QA score = perfect categories ÷ categories sampled. Click a person to filter.</span><div class="tablewrap" style="margin-top:8px"><table id="qaScores"></table></div></div>
+  <div class="card"><b>Reviewed episodes</b> <span class="muted small" id="qaCount"></span><div class="tablewrap" style="margin-top:8px"><table id="qaRows"><tr><td class="empty">Loading the Reviewers Sheet…</td></tr></table></div></div>
+</section>
+
+<section id="rb">
+  <div id="rbBanner"></div>
+  <div class="card">
+    <div class="row"><b>Pick episodes to review</b><span class="muted small" id="rbWho"></span></div>
+    <div class="qgrid">
+      <label>Work date <input type="date" id="rbDate"></label>
+      <label>Episodes per member <input type="number" id="rbN" min="1" max="50" step="1" value="4" inputmode="numeric"></label>
+      <div class="qblock"><span>Types</span><div class="chips" id="rbTypes">
+        <label class="chip"><input type="checkbox" value="DATA" checked> DATA</label>
+        <label class="chip"><input type="checkbox" value="TEXT LABELING"> Text labeling</label>
+        <label class="chip"><input type="checkbox" value="REVIEW"> Review</label>
+      </div></div>
+    </div>
+    <div class="row" style="margin-bottom:6px"><span class="muted small">Members</span><button class="btn sm" type="button" id="rbAll">All</button><button class="btn sm" type="button" id="rbNone">None</button></div>
+    <div class="chips" id="rbMembers"></div>
+    <label class="small" style="display:block;margin:10px 0"><input type="checkbox" id="rbAgain"> Include episodes already reviewed, or taken on an earlier day</label>
+    <div class="row"><button class="btn primary" type="button" id="rbPick">Pick randomly</button><span class="muted small" id="rbProgress"></span></div>
+  </div>
+  <div class="kpis" id="rbKpis"></div>
+  <div class="card">
+    <div class="row">
+      <b>Review bucket</b>
+      <label class="small">Taken on <input type="date" id="rbDay"></label>
+      <button class="btn sm" type="button" data-rbday="-1" aria-label="Previous day">‹</button>
+      <button class="btn sm" type="button" data-rbday="1" aria-label="Next day">›</button>
+      <button class="btn sm" type="button" data-rbday="0">Today</button>
+      <label class="small">Taken by <select id="rbBy"><option value="">Everyone</option></select></label>
+      <div class="spacer"></div>
+      <button class="btn sm" type="button" id="rbCopy">Copy Episode IDs</button>
+    </div>
+    <div class="row rbsave" id="rbSaveBar">
+      <span class="muted small">Review here: every category starts as “No changes needed”. Change only the ones with mistakes, add notes, and tick the rows you've finished.</span>
+      <div class="spacer"></div>
+      <label class="small">Date reviewed <input type="date" id="rbRev"></label>
+      <label class="small">Shift <select id="rbShift"></select></label>
+      <button class="btn primary" type="button" id="rbSave" disabled>Save reviews</button>
+    </div>
+    <div class="tablewrap" style="margin-top:8px"><table id="rbRows"><tr><td class="empty">Loading the review bucket…</td></tr></table></div>
+  </div>
+  <p class="muted small">Picks come from members' own tabs: entries stamped on the work date, of the chosen types, never breaks or end-of-shift rows. Each episode can be taken only once a day, so the Team Lead and the reviewer never get the same one. By default the pick also skips episodes already in the Reviewers Sheet or taken on an earlier day. Which episodes are taken is kept by the tracker itself; a finished review is written straight into the Reviewers Sheet (annotator, episode, task, work date as Date Evaluated, Date reviewed, you as reviewer, shift, the four categories and notes), in one write, after its last filled row. Perfect and Errors stay the sheet's formulas. An episode shows as Reviewed once the Reviewers Sheet has a review of it dated on or after the day it was taken.</p>
+</section>
+
+<section id="checks">
+  <div class="card"><b>Data checks</b><div class="muted small">Problems found in Main Tracker and the Reviewers Sheet. Nothing is changed from here — fix them in the sheet.</div></div>
+  <div id="checkList"></div>
+</section>
+</div>
+
+<aside class="card report">
+  <div class="row"><h2>Daily report</h2><div class="spacer"></div><button class="btn sm" type="button" id="copyBtn">Copy</button></div>
+  <div class="row" style="margin:10px 0;gap:6px">
+    <button class="btn sm" type="button" data-shift="-1" aria-label="Previous day">‹</button>
+    <input type="date" id="repDate" style="flex:1">
+    <button class="btn sm" type="button" data-shift="1" aria-label="Next day">›</button>
+  </div>
+  <table class="rep" id="repTable"></table>
+  <div class="muted small" id="repNote" style="margin-top:10px"></div>
+</aside>
+</div></main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ===== config ===== */
+const SHEETS = {
+  test: { id: '1KcBt2UwnQ_Ae8jPfqiJ5ILEr9uPwbSzocM3z5jNwkgk', label: 'TEST copy' },
+  live: { id: '1WAEU-qtb5E2YhPzj7vqAqRgJLD48WrDRp1fEFLA0wdU', label: 'original' }
+};
+const SERVER = 'Google Sheets';
+const MT = 'Main Tracker', RS = 'Reviewers Sheet', TD = 'Team Details';
+/* Main Tracker day-row columns (0-based). Editable: C D E L W X AC AD AE AF. Everything else is a formula. */
+const C = { date:0, ldap:1, tin:2, brk:3, tout:4, core:5, net:6, extra:11, totHours:15, labels:17, segs:18, dqa:19, revs:20, eps:21, remarks:22, ot:23, rate:25, ded:26, brkMin:27, edit:28, coach:29, textMin:30, revMin:31 };
+const MINS = [['edit','Editing feedback'],['coach','Coaching / huddle'],['textMin','Text labels'],['revMin','Review time']];
+const PALETTE = ['#2f62d9','#d9483b','#12a594','#e8762d','#8e4ec6','#0a8fd6','#c93f8f','#3f9a4f','#a5774f','#5b5bd6','#d64565','#2a9d80','#c99a14','#7c66dc','#3e63dd','#b0825a','#0097b8','#8f7266'];
+
+/* ===== state ===== */
+let mcp = null, sheetKey = 'test', D = null, Q = null, charts = {}, selected = new Set();
+try { sheetKey = localStorage.getItem('t39sheet') === 'live' ? 'live' : 'test'; } catch (e) {}
+const SID = () => SHEETS[sheetKey].id;
+
+/* ===== small helpers ===== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[,%]/g, '')); return isFinite(n) ? n : 0; };
+const fmt = (n, d = 0) => n == null || !isFinite(n) ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const pad = n => String(n).padStart(2, '0');
+const isoOf = (y, m, d) => y + '-' + pad(m + 1) + '-' + pad(d);
+const todayIso = () => { const t = new Date(); return isoOf(t.getFullYear(), t.getMonth(), t.getDate()); };
+const parseISO = s => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+const addDays = (s, n) => { const d = parseISO(s); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const longDate = s => parseISO(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const serialOf = s => (parseISO(s) - Date.UTC(1899, 11, 30)) / 864e5;
+const colL = n => { let s = ''; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function guessYear(m, d) { const t = new Date(); let y = t.getFullYear(); if (new Date(y, m, d) - t > 60 * 864e5) y--; return y; }
+/** "11/13", "11/13/2026", "Nov-15", "15-Nov", "2026-11-13", "Friday, Nov 13" → yyyy-mm-dd */
+function parseDay(v) {
+  const s = String(v == null ? '' : v).trim(); let m;
+  if (!s) return '';
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[1] + '-' + m[2] + '-' + m[3];
+  if ((m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/))) { const mo = +m[1] - 1, d = +m[2]; let y = m[3] ? +m[3] : guessYear(mo, d); if (y < 100) y += 2000; return isoOf(y, mo, d); }
+  if ((m = s.match(/([A-Za-z]{3})[a-z]*[\s-]+(\d{1,2})(?:,?\s*(\d{4}))?/)) && MON[m[1].toLowerCase()] != null) { const mo = MON[m[1].toLowerCase()], d = +m[2]; return isoOf(m[3] ? +m[3] : guessYear(mo, d), mo, d); }
+  if ((m = s.match(/^(\d{1,2})[\s-]+([A-Za-z]{3})/)) && MON[m[2].toLowerCase()] != null) { const mo = MON[m[2].toLowerCase()], d = +m[1]; return isoOf(guessYear(mo, d), mo, d); }
+  return '';
+}
+/** "16:00:00", "4:00 PM", "0.6667" → fraction of a day (or null) */
+function tFrac(v) {
+  const s = String(v == null ? '' : v).trim(); if (!s) return null;
+  if (/^\d*\.\d+$|^[01]$/.test(s)) return +s;
+  const m = s.match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm)?$/i); if (!m) return null;
+  let h = +m[1]; const mi = +(m[2] || 0);
+  if (m[3]) { h %= 12; if (/pm/i.test(m[3])) h += 12; }
+  return h > 24 || mi > 59 ? null : (h * 60 + mi) / 1440;
+}
+function fmtT(f) { if (f == null) return ''; let mins = Math.round((f % 1) * 1440) % 1440; const h = Math.floor(mins / 60), mi = mins % 60; return ((h % 12) || 12) + ':' + pad(mi) + ' ' + (h < 12 ? 'AM' : 'PM'); }
+function inputT(f) { if (f == null) return ''; const mins = Math.round((f % 1) * 1440) % 1440; return pad(Math.floor(mins / 60)) + ':' + pad(mins % 60); }
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2600); }
+function status(state, text) { $('dot').className = 'dot' + (state === 'busy' ? ' busy' : state === 'err' ? ' err' : ''); $('statusText').textContent = text; }
+const nowT = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+/* ===== Google Sheets connector ===== */
+function errText(e) {
+  const c = e && e.code;
+  if (c === 'server_not_connected' || c === 'selection_required') return 'Google Sheets is not connected for you. Add it in claude.ai Settings → Connectors, then press Reload.';
+  if (c === 'needs_reauth') return 'Your Google Sheets connection has expired. Reconnect Google Sheets in claude.ai Settings → Connectors, then press Reload.';
+  if (c === 'not_in_manifest' || c === 'approval_required' || c === 'consent_required') return 'This page needs your permission to use Google Sheets. Press Reload and choose Allow when asked.';
+  if (c === 'blocked_by_policy') return 'Your organization does not allow Google Sheets here.';
+  if (c === 'server_unavailable') return 'Google Sheets did not answer in time. Try Reload in a moment.';
+  if (c === 'no_mcp') return 'Connectors are not available in this view. Open the tracker on claude.ai or in the Claude app.';
+  if (c === 'tool_error') return 'Google Sheets refused the request: ' + String(e.message || '').slice(0, 240);
+  return (e && e.message) || String(e);
+}
+async function gs(tool, input) {
+  if (!mcp) throw { code: 'no_mcp', message: 'no connectors' };
+  const r = await mcp.callTool(SERVER, tool, input, { cache: false });
+  let p = r.payload;
+  if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) {} }
+  if (p && p.content && !p.values && !p.sheets && !p.range) p = p.content;
+  return p || {};
+}
+const q = t => "'" + t.replace(/'/g, "''") + "'";
+/** A real Sheets reply always names its range; anything else (cut-off text, an error page) is an error, never "no rows". */
+async function getValues(range) {
+  const p = await gs('get_values', { spreadsheetId: SID(), range });
+  if (!p || typeof p !== 'object' || (p.range == null && !Array.isArray(p.values))) throw { code: 'tool_error', message: 'Unexpected reply for ' + range + ': ' + String(typeof p === 'string' ? p : JSON.stringify(p)).slice(0, 160) };
+  return (p.values || []).map(r => r.map(x => x == null ? '' : String(x)));
+}
+/** Cells holding a formula inside sheet!r1c1:r2c2 (1-based rows, 0-based cols) → Set of "r,c" (relative). */
+async function formulaCells(sheet, r1, c1, r2, c2) {
+  const p = await gs('get_spreadsheet', { spreadsheetId: SID(), includeGridData: true, ranges: [q(sheet) + '!' + colL(c1) + r1 + ':' + colL(c2) + r2], fields: ['sheets.data.rowData.values.userEnteredValue'] });
+  const data = ((((p.sheets || [])[0] || {}).data) || [])[0] || {}, out = new Set();
+  (data.rowData || []).forEach((row, ri) => (row.values || []).forEach((v, ci) => { if (v && v.userEnteredValue && v.userEnteredValue.formulaValue != null) out.add(ri + ',' + ci); }));
+  return out;
+}
+/**
+ * Writes a block of values starting at (row r1, col c1). `null` = leave that cell alone.
+ * Refuses the whole write if any non-null value would land on a formula cell.
+ */
+async function safeWrite(sheet, r1, c1, values) {
+  const h = values.length, w = Math.max(...values.map(r => r.length));
+  const f = await formulaCells(sheet, r1, c1, r1 + h - 1, c1 + w - 1);
+  for (let i = 0; i < h; i++) for (let j = 0; j < w; j++)
+    if (values[i][j] != null && f.has(i + ',' + j)) throw { code: 'formula', message: colL(c1 + j) + (r1 + i) + ' in ' + sheet + ' is a formula, so nothing was changed.' };
+  const rows = values.map(r => { const x = r.slice(); while (x.length < w) x.push(null); return x; });
+  await gs('update_values', { spreadsheetId: SID(), range: q(sheet) + '!' + colL(c1) + r1 + ':' + colL(c1 + w - 1) + (r1 + h - 1), values: rows });
+}
+
+/* ===== load + parse ===== */
+async function loadAll() {
+  status('busy', 'Reading ' + SHEETS[sheetKey].label + '…'); $('banner').innerHTML = '';
+  $('openSheet').href = 'https://docs.google.com/spreadsheets/d/' + SID() + '/edit';
+  try {
+    const [td, mt, meta] = await Promise.all([getValues(q(TD) + '!A1:H80'), getValues(q(MT) + '!A1:AF5000'),
+      gs('get_spreadsheet', { spreadsheetId: SID(), fields: ['sheets.properties.title', 'sheets.properties.sheetId'] })]);
+    D = parseMain(mt, parseTeam(td));
+    D.gids = {}; ((meta.sheets) || []).forEach(s => { if (s.properties && s.properties.title) D.gids[s.properties.title] = s.properties.sheetId; });
+    D.tabs = new Set(Object.keys(D.gids));
+    renderAll();
+    loadMine();
+    status('ok', 'Read ' + nowT() + ' · ' + SHEETS[sheetKey].label);
+  } catch (e) { status('err', 'Could not read the sheet'); $('banner').innerHTML = errBanner(e); return; }
+  loadReviews();
+}
+function parseTeam(rows) {
+  const h = rows.findIndex(r => r.includes('LDAP')); const roster = {};
+  if (h < 0) return roster; const ci = n => rows[h].indexOf(n);
+  rows.slice(h + 1).forEach(r => { const l = String(r[ci('LDAP')] || '').trim().toLowerCase(); if (!l) return;
+    roster[l] = { ldap: l, name: ((r[ci('First Name')] || '') + ' ' + (r[ci('Last Name')] || '')).trim() || l, role: r[ci('Designation')] || '' }; });
+  return roster;
+}
+function dayRec(r, row) {
+  const g = k => r[C[k]] == null ? '' : r[C[k]];
+  const rec = { row, ldap: String(g('ldap')).trim().toLowerCase(), tin: tFrac(g('tin')), tout: tFrac(g('tout')), brk: String(g('brk')).trim(),
+    core: num(g('core')), net: num(g('net')), extra: num(g('extra')), dqa: num(g('dqa')), revs: num(g('revs')), labels: num(g('labels')), segs: num(g('segs')),
+    ded: num(g('ded')), eps: num(g('eps')), totHours: num(g('totHours')), rate: g('rate'), remarks: g('remarks'), ot: g('ot') };
+  MINS.forEach(([k]) => rec[k] = String(g(k)).trim());
+  rec.present = !!String(g('tin')).trim(); rec.work = rec.net + rec.extra;
+  return rec;
+}
+function parseMain(rows, roster) {
+  const out = { roster, summary: [], days: {}, order: [], refRows: [] };
+  const h = rows.findIndex(r => String(r[1] || '').trim() === 'LDAP');
+  let i = h + 1;
+  for (; i < rows.length; i++) {
+    const b = String((rows[i] || [])[1] || '').trim();
+    if (!b) continue;
+    if (b === 'Total') { i++; break; }
+    out.summary.push({ row: i + 1, ldap: b.toLowerCase(), tinRaw: rows[i][2] || '', brk: rows[i][3] || '', toutRaw: rows[i][4] || '' });
+  }
+  let cur = null;
+  for (; i < rows.length; i++) {
+    const r = rows[i] || [], b = String(r[1] || '').trim();
+    if (!b) continue;
+    if (/^[A-Za-z]+day,\s+[A-Za-z]{3}\s+\d{1,2}$/.test(b)) { const d = parseDay(b); cur = { date: d, label: b, header: i + 1, rows: [] }; out.days[d] = cur; out.order.push(d); continue; }
+    if (!cur) continue;
+    if (b === 'Total') { cur.total = i + 1; cur = null; continue; }
+    if (b.includes('#REF')) { out.refRows.push({ date: cur.date, row: i + 1 }); continue; }
+    cur.rows.push(dayRec(r, i + 1));
+  }
+  // members = everyone in Main Tracker summary, named from Team Details
+  out.members = out.summary.map(s => ({ ldap: s.ldap, name: (roster[s.ldap] || {}).name || s.ldap, role: (roster[s.ldap] || {}).role || '' }));
+  out.members.forEach(m => selected.add(m.ldap));
+  out.today = todayIso();
+  return out;
+}
+const nameOf = l => ((D && D.members.find(m => m.ldap === l)) || (D && D.roster[l]) || { name: l || '—' }).name;
+const colorOf = l => PALETTE[Math.max(0, D.members.findIndex(m => m.ldap === l)) % PALETTE.length];
+
+/* ===== tabs ===== */
+$('tabs').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  showTab(b.dataset.t);
+};
+function showTab(t) {
+  if (!$(t)) t = 'mine';
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.t === t));
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === t));
+  try { localStorage.setItem('t39tab', t); } catch (e) {}
+  if (t === 'perf') renderPerf();
+  if (t === 'rb') renderBucket();
+}
+function renderAll() { renderAttendance(); renderSchedule(); initPerf(); renderPerf(); initQA(); renderChecks(); initBucket(); }
+
+/* ===== attendance ===== */
+const attDate = $('attDate');
+document.querySelectorAll('[data-shift]').forEach(b => b.onclick = () => { attDate.value = addDays(attDate.value || D.today, +b.dataset.shift); renderAttendance(); });
+$('todayBtn').onclick = () => { attDate.value = D.today; renderAttendance(); };
+attDate.onchange = renderAttendance;
+$('repDate').onchange = e => { if (e.target.value) { attDate.value = e.target.value; renderAttendance(); } };
+function defShift(ldap) {
+  const s = D.summary.find(x => x.ldap === ldap) || {};
+  const tin = tFrac(s.tinRaw) ?? 16 / 24; let tout = tFrac(s.toutRaw) ?? 0; if (tout <= tin) tout += 1;
+  return { tin, tout, brk: s.brk || '20:00 - 20:30' };
+}
+function renderAttendance() {
+  if (!D) return;
+  if (!attDate.value) attDate.value = D.today;
+  const d = attDate.value, day = D.days[d];
+  $('repDate').value = d;
+  renderReport();
+  if (!day) {
+    $('attKpis').innerHTML = '';
+    $('attList').innerHTML = '<div class="card empty">Main Tracker has no day block for ' + esc(longDate(d)) + ' yet. Add the day in the sheet first; the tracker never inserts rows.</div>';
+    $('markAllBtn').disabled = $('clearAllBtn').disabled = true; return;
+  }
+  $('markAllBtn').disabled = $('clearAllBtn').disabled = false;
+  const pres = day.rows.filter(r => r.present), withQ = pres.map(r => quotaOf(r)).filter(Boolean);
+  $('attKpis').innerHTML = [[pres.length + ' / ' + day.rows.length, 'Present (Time In filled)'], [fmt(pres.reduce((a, r) => a + r.work, 0), 2), 'Working hours'],
+    [withQ.filter(x => x.met).length + ' / ' + withQ.length, 'Annotators at quota'],
+    [fmt(day.rows.reduce((a, r) => a + r.dqa, 0)), 'Data QA'], [fmt(day.rows.reduce((a, r) => a + r.revs, 0)), 'Reviews']]
+    .map(([v, l]) => '<div class="kpi"><b>' + v + '</b><span>' + l + '</span></div>').join('');
+  $('attList').innerHTML = day.rows.map(r => {
+    const tin = r.tin, tout = r.tout;
+    return '<div class="person' + (r.present ? ' present' : '') + '" data-row="' + r.row + '">' +
+      '<div class="ptop"><input type="checkbox" aria-label="Present" ' + (r.present ? 'checked' : '') + ' data-k="present">' +
+      '<div class="who"><b>' + esc(nameOf(r.ldap)) + '</b><span class="muted small">' + esc(r.ldap) + ' · row ' + r.row + '</span></div>' +
+      '<div class="chips">' + (r.present ? '<span class="tag">' + fmt(r.work, 2) + ' h</span>' : '') + '</div></div>' +
+      quotaHtml(r) +
+      '<div class="fields"><label>Time In<input type="time" data-k="tin" value="' + inputT(tin) + '"></label><label>Break<input data-k="brk" value="' + esc(r.brk) + '" placeholder="20:00 - 20:30"></label><label>Time Out<input type="time" data-k="tout" value="' + inputT(tout) + '"></label></div>' +
+      '<div class="mins">' + MINS.map(([k, l]) => '<label>' + l + ' (min)<input type="number" min="0" max="720" step="1" inputmode="numeric" data-k="' + k + '" value="' + esc(r[k]) + '"></label>').join('') + '</div></div>';
+  }).join('');
+}
+/* ----- daily quota: Data QA only (Total Data QA, T = core + extra hours) ----- */
+let QUOTA = 70;
+try { const v = +localStorage.getItem('t39quota'); if (v > 0) QUOTA = v; } catch (e) {}
+$('quotaIn').value = QUOTA;
+$('quotaIn').onchange = e => { const v = Math.round(+e.target.value); if (!(v > 0)) { e.target.value = QUOTA; return; } QUOTA = v; try { localStorage.setItem('t39quota', v); } catch (x) {} renderAttendance(); };
+/** Usual shift length in hours (Time Out − Time In − 30-min break), e.g. 16:00–00:00 → 7.5. */
+function shiftLen(ldap) { const s = defShift(ldap); return Math.max(1, (s.tout - s.tin) * 24 - 0.5); }
+/** Annotators only. Target = quota × hours worked today (core + extra) ÷ usual shift length. */
+function quotaOf(r) {
+  const role = ((D.roster[r.ldap] || {}).role || '').toLowerCase();
+  if (role && !/annotator/.test(role)) return null;
+  const full = shiftLen(r.ldap), hours = r.present && r.totHours > 0 ? r.totHours : full;
+  const target = Math.max(1, Math.round(QUOTA * hours / full));
+  return { target, hours, full, done: r.dqa, met: r.dqa >= target, pct: Math.min(100, 100 * r.dqa / target) };
+}
+function quotaHtml(r) {
+  const qo = quotaOf(r), parts = [];
+  if (r.revs) parts.push(fmt(r.revs) + ' reviews'); if (r.labels) parts.push(fmt(r.labels) + ' text labels');
+  const why = parts.length ? 'also ' + parts.join(' · ') : (r.dqa ? '' : 'nothing logged yet');
+  if (!qo) return '<div class="quota"><div class="qline"><span>Data QA today</span><b>' + fmt(r.dqa) + '</b></div><div class="muted small">' + esc(why ? why + ' · ' : '') + 'no quota for this role</div></div>';
+  const left = qo.target - qo.done;
+  return '<div class="quota' + (qo.met ? ' met' : '') + '" title="Quota ' + QUOTA + ' data QA per ' + fmt(qo.full, 2) + ' h shift × ' + fmt(qo.hours, 2) + ' h today">' +
+    '<div class="qline"><span>Data QA today</span><span><b>' + fmt(qo.done) + '</b> / ' + fmt(qo.target) + '</span></div>' +
+    '<div class="qbar" role="progressbar" aria-valuemin="0" aria-valuemax="' + qo.target + '" aria-valuenow="' + qo.done + '"><i style="width:' + qo.pct.toFixed(1) + '%"></i></div>' +
+    '<div class="qline"><span>' + esc(why) + '</span>' + (qo.met ? '<span class="tag ok">Quota met' + (left < 0 ? ' +' + (-left) : '') + '</span>' : '<span class="tag off">' + left + ' to go</span>') + '</div></div>';
+}
+/** Keeps today's counts fresh while the Attendance tab is open: re-reads just today's block every 5 minutes. */
+async function refreshToday() {
+  if (!D || document.hidden || !$('att').classList.contains('on') || attDate.value !== D.today) return;
+  const day = D.days[D.today]; if (!day || !day.rows.length) return;
+  const first = day.rows[0].row, last = day.rows[day.rows.length - 1].row;
+  try { const fresh = await getValues(q(MT) + '!A' + first + ':AF' + last);
+    fresh.forEach((r, i) => { const ix = day.rows.findIndex(x => x.row === first + i); if (ix > -1) day.rows[ix] = dayRec(r, first + i); });
+    if (!document.querySelector('#attList input:focus')) renderAttendance(); status('ok', 'Counts updated ' + nowT() + ' · ' + SHEETS[sheetKey].label);
+  } catch (e) {}
+}
+setInterval(refreshToday, 5 * 60 * 1000);
+$('attList').addEventListener('change', async e => {
+  const el = e.target, card = el.closest('.person'); if (!card || !el.dataset.k) return;
+  const day = D.days[attDate.value], rec = day.rows.find(r => r.row === +card.dataset.row), k = el.dataset.k;
+  let vals, c1, label;
+  if (k === 'present') {
+    if (el.checked) { const s = defShift(rec.ldap); vals = [[s.tin, s.brk, s.tout]]; label = nameOf(rec.ldap) + ' marked present'; }
+    else { vals = [['', '', '']]; label = nameOf(rec.ldap) + ' cleared'; }
+    c1 = C.tin;
+  } else if (k === 'tin' || k === 'tout') {
+    const card2 = el.closest('.person'), tin = tFrac(card2.querySelector('[data-k=tin]').value), toutRaw = tFrac(card2.querySelector('[data-k=tout]').value);
+    if (tin == null || toutRaw == null) { if (!el.value) { vals = [[k === 'tin' ? '' : null, null, k === 'tout' ? '' : null]]; c1 = C.tin; } else return toast('Enter both Time In and Time Out'); }
+    else { let tout = toutRaw; if (tout <= tin) tout += 1; vals = [[tin, null, tout]]; c1 = C.tin; }
+    label = 'Shift saved for ' + nameOf(rec.ldap);
+  } else if (k === 'brk') { vals = [[el.value.trim()]]; c1 = C.brk; label = 'Break saved for ' + nameOf(rec.ldap); }
+  else { const v = el.value.trim(); const n = v === '' ? '' : Math.round(+v); if (v !== '' && (!isFinite(n) || n < 0 || n > 720)) return toast('Minutes must be between 0 and 720'); vals = [[n]]; c1 = C[k]; label = 'Deductive minutes saved for ' + nameOf(rec.ldap); }
+  await writeAndRefresh(day, rec.row, rec.row, c1, vals, label);
+});
+async function writeAndRefresh(day, rFirst, rLast, c1, vals, label) {
+  status('busy', 'Saving to ' + SHEETS[sheetKey].label + '…');
+  try {
+    await safeWrite(MT, rFirst, c1, vals);
+    const fresh = await getValues(q(MT) + '!A' + rFirst + ':AF' + rLast);
+    fresh.forEach((r, i) => { const row = rFirst + i, ix = day.rows.findIndex(x => x.row === row); if (ix > -1) day.rows[ix] = dayRec(r, row); });
+    renderAttendance(); renderChecks();
+    status('ok', 'Saved ' + nowT() + ' · ' + SHEETS[sheetKey].label); toast(label);
+  } catch (e) { status('err', 'Not saved'); toast('Not saved — ' + errText(e)); renderAttendance(); }
+}
+function arm(btn, text, fn) {
+  if (btn.classList.contains('armed')) { btn.classList.remove('armed'); btn.textContent = btn.dataset.label; clearTimeout(btn._t); fn(); return; }
+  btn.dataset.label = btn.dataset.label || btn.textContent; btn.classList.add('armed'); btn.textContent = text;
+  btn._t = setTimeout(() => { btn.classList.remove('armed'); btn.textContent = btn.dataset.label; }, 4000);
+}
+$('markAllBtn').onclick = () => {
+  const day = D.days[attDate.value]; if (!day || !day.rows.length) return;
+  const rs = day.rows, first = rs[0].row, last = rs[rs.length - 1].row, vals = [];
+  for (let row = first; row <= last; row++) { const rec = rs.find(r => r.row === row); if (!rec || rec.present) { vals.push([null, null, null]); continue; } const s = defShift(rec.ldap); vals.push([s.tin, s.brk, s.tout]); }
+  const n = rs.filter(r => !r.present).length; if (!n) return toast('Everyone is already present');
+  writeAndRefresh(day, first, last, C.tin, vals, n + ' marked present in one save');
+};
+$('clearAllBtn').onclick = e => arm(e.currentTarget, 'Click again to clear all', () => {
+  const day = D.days[attDate.value]; if (!day || !day.rows.length) return;
+  const rs = day.rows, first = rs[0].row, last = rs[rs.length - 1].row, vals = [];
+  for (let row = first; row <= last; row++) vals.push(rs.find(r => r.row === row) ? ['', '', ''] : [null, null, null]);
+  writeAndRefresh(day, first, last, C.tin, vals, 'Time In / Break / Time Out cleared for ' + rs.length + ' people in one save');
+});
+
+/* ===== daily report ===== */
+function dayReport(d) {
+  const day = D.days[d], rows = day ? day.rows : [], pres = rows.filter(r => r.present);
+  const sum = (a, k) => a.reduce((s, r) => s + r[k], 0);
+  const work = sum(pres, 'work'), dqa = sum(rows, 'dqa'), labels = sum(rows, 'labels'), segs = sum(rows, 'segs'), revs = sum(rows, 'revs'), ded = sum(pres, 'ded');
+  const fb = Q ? Q.rows.filter(x => (x.dRev || x.dEval) === d && x.err > 0) : [];
+  const feedback = !Q ? 'feedback: loading reviews…' : fb.length ? 'feedback: ' + fb.map(x => nameOf(x.ldap).split(' ')[0] + ' (' + x.err + ' error' + (x.err === 1 ? '' : 's') + ')').join(', ') : 'no feedback';
+  const per = n => work ? n / work : 0;
+  return { d, has: !!day, team: pres.length, work, dqa, labels, segs, revs, ded, feedback,
+    lines: [[pres.length, 'annotator'], [dqa, 'total data qa'], [work.toFixed(2), 'total working hours'], [per(dqa).toFixed(2), 'data qa per hour'],
+      [labels, 'total text labels'], [per(segs).toFixed(2), 'segments per hour'], [revs, 'total reviews']] };
+}
+function renderReport() {
+  const d = $('repDate').value || attDate.value; if (!D || !d) return;
+  const r = dayReport(d);
+  $('repTable').innerHTML = '<tr class="head"><td class="v">TEAM 39</td><td>' + longDate(d) + '</td></tr>' +
+    r.lines.map(([v, t]) => '<tr><td class="v">' + esc(typeof v === 'number' ? fmt(v) : v) + '</td><td>' + t + '</td></tr>').join('') +
+    '<tr class="ded"><td class="v">' + fmt(r.ded, 2) + '</td><td>deductive hours</td></tr><tr class="fb"><td class="v"></td><td>' + esc(r.feedback) + '</td></tr>';
+  $('repNote').textContent = !r.has ? 'Main Tracker has no block for this day.' : r.team ? 'Annotators = people with Time In filled. Working hours, data QA, labels and reviews are the sheet’s own day-row formulas (net hours + extra hours).' : 'Nobody has Time In filled for this day yet, so annotators and hours are 0.';
+}
+$('copyBtn').onclick = async () => {
+  const r = dayReport($('repDate').value || attDate.value);
+  const text = ['TEAM 39 ' + longDate(r.d), ...r.lines.map(([v, t]) => v + ' ' + t), r.ded.toFixed(2) + ' deductive hours', r.feedback].join('\n');
+  try { await navigator.clipboard.writeText(text); toast('Report copied'); }
+  catch (e) { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (x) {} t.remove(); toast(ok ? 'Report copied' : 'Select the report and copy it'); }
+};
+
+/* ===== schedules (Main Tracker summary rows, C–E) ===== */
+function renderSchedule() {
+  $('schedTable').innerHTML = '<tr><th>Name</th><th>LDAP</th><th>Time In</th><th>Break</th><th>Time Out</th><th class="num">Hours</th></tr>' +
+    D.summary.map(s => { const a = tFrac(s.tinRaw), b = tFrac(s.toutRaw); let len = a != null && b != null ? ((b - a + 1) % 1) * 24 - 0.5 : null;
+      return '<tr data-row="' + s.row + '"><td>' + esc(nameOf(s.ldap)) + '</td><td class="muted">' + esc(s.ldap) + '</td><td><input type="time" data-k="tin" value="' + inputT(a) + '"></td><td><input data-k="brk" value="' + esc(s.brk) + '" style="width:150px"></td><td><input type="time" data-k="tout" value="' + inputT(b) + '"></td><td class="num">' + (len == null ? '—' : fmt(len, 2)) + '</td></tr>'; }).join('');
+}
+$('schedTable').addEventListener('change', async e => {
+  const el = e.target, tr = el.closest('tr'); if (!tr || !el.dataset.k) return;
+  const row = +tr.dataset.row, s = D.summary.find(x => x.row === row), k = el.dataset.k;
+  let c1, v;
+  if (k === 'brk') { c1 = C.brk; v = el.value.trim(); } else { c1 = k === 'tin' ? C.tin : C.tout; const f = tFrac(el.value); v = f == null ? '' : f; }
+  status('busy', 'Saving…');
+  try { await safeWrite(MT, row, c1, [[v]]); const fresh = (await getValues(q(MT) + '!C' + row + ':E' + row))[0] || [];
+    s.tinRaw = fresh[0] || ''; s.brk = fresh[1] || ''; s.toutRaw = fresh[2] || ''; renderSchedule(); status('ok', 'Saved ' + nowT()); toast('Shift saved for ' + nameOf(s.ldap)); }
+  catch (err) { status('err', 'Not saved'); toast('Not saved — ' + errText(err)); renderSchedule(); }
+});
+
+/* ===== performance ===== */
+const pFrom = $('pFrom'), pTo = $('pTo');
+function initPerf() {
+  if (!pTo.value) { pTo.value = D.today; pFrom.value = addDays(D.today, -13); }
+  $('pChips').innerHTML = D.members.map(m => '<button type="button" class="chip' + (selected.has(m.ldap) ? '' : ' off') + '" data-l="' + esc(m.ldap) + '"><i style="background:' + colorOf(m.ldap) + '"></i>' + esc(m.name) + '</button>').join('');
+}
+$('pChips').onclick = e => { const b = e.target.closest('.chip'); if (!b) return; const l = b.dataset.l; selected.has(l) ? selected.delete(l) : selected.add(l); b.classList.toggle('off'); renderPerf(); };
+$('pAll').onclick = () => { D.members.forEach(m => selected.add(m.ldap)); initPerf(); renderPerf(); };
+$('pNone').onclick = () => { selected.clear(); initPerf(); renderPerf(); };
+document.querySelectorAll('[data-range]').forEach(b => b.onclick = () => { pTo.value = D.today; pFrom.value = b.dataset.range === 'all' ? (D.order[0] || D.today) : addDays(D.today, 1 - +b.dataset.range); renderPerf(); });
+[pFrom, pTo, $('pMetric'), $('pGroup'), $('pTeam')].forEach(el => el.onchange = renderPerf);
+function perfRows() {
+  const f = pFrom.value, t = pTo.value, out = [];
+  D.order.forEach(d => { if (d < f || d > t) return; D.days[d].rows.forEach(r => out.push({ d, ...r })); });
+  return out;
+}
+function bucket(d) { if ($('pGroup').value === 'day') return d; const x = parseISO(d); x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7)); return x.toISOString().slice(0, 10); }
+function renderPerf() {
+  if (!D || !$('perf').classList.contains('on')) return;
+  const rows = perfRows(), metric = $('pMetric').value, team = $('pTeam').checked;
+  const qa = Q ? Q.rows.filter(x => { const d = x.dRev || x.dEval; return d >= pFrom.value && d <= pTo.value; }) : [];
+  const buckets = [...new Set(rows.map(r => bucket(r.d)).concat(qa.map(x => bucket(x.dRev || x.dEval))))].sort();
+  const val = (ldaps, b) => {
+    const rs = rows.filter(r => ldaps.includes(r.ldap) && bucket(r.d) === b), qs = qa.filter(x => ldaps.includes(x.ldap) && bucket(x.dRev || x.dEval) === b);
+    const work = rs.filter(r => r.present).reduce((a, r) => a + r.work, 0), dqa = rs.reduce((a, r) => a + r.dqa, 0);
+    if (metric === 'qa') return dqa; if (metric === 'hours') return work; if (metric === 'rev') return rs.reduce((a, r) => a + r.revs, 0);
+    if (metric === 'rate') return work ? dqa / work : null;
+    const sam = qs.reduce((a, x) => a + x.sam, 0); return sam ? 100 * qs.reduce((a, x) => a + x.ok, 0) / sam : null;
+  };
+  const sel = D.members.filter(m => selected.has(m.ldap)).map(m => m.ldap);
+  const css = getComputedStyle(document.documentElement), ink = css.getPropertyValue('--muted').trim(), line = css.getPropertyValue('--line').trim();
+  const datasets = team ? [{ label: 'Team', data: buckets.map(b => val(sel, b)), borderColor: css.getPropertyValue('--accent').trim(), backgroundColor: css.getPropertyValue('--accent').trim(), tension: .25, spanGaps: true }]
+    : sel.map(l => ({ label: nameOf(l), data: buckets.map(b => val([l], b)), borderColor: colorOf(l), backgroundColor: colorOf(l), tension: .25, spanGaps: true, pointRadius: 2 }));
+  $('perfTitle').textContent = $('pMetric').selectedOptions[0].text + ' by ' + $('pGroup').value;
+  if (charts.p) charts.p.destroy();
+  if (window.Chart) charts.p = new Chart($('perfChart'), { type: 'line', data: { labels: buckets.map(b => parseISO(b).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })), datasets },
+    options: { maintainAspectRatio: false, interaction: { mode: 'nearest', intersect: false }, plugins: { legend: { display: team || sel.length <= 8, labels: { color: ink, boxWidth: 10 } } },
+      scales: { x: { ticks: { color: ink }, grid: { color: line } }, y: { beginAtZero: true, ticks: { color: ink }, grid: { color: line } } } } });
+  // per-member table
+  const per = D.members.map(m => { const rs = rows.filter(r => r.ldap === m.ldap), qs = qa.filter(x => x.ldap === m.ldap);
+    const work = rs.filter(r => r.present).reduce((a, r) => a + r.work, 0), dqa = rs.reduce((a, r) => a + r.dqa, 0), sam = qs.reduce((a, x) => a + x.sam, 0);
+    return { m, days: rs.filter(r => r.present).length, dqa, work, rate: work ? dqa / work : null, revs: rs.reduce((a, r) => a + r.revs, 0), ded: rs.reduce((a, r) => a + r.ded, 0), score: sam ? 100 * qs.reduce((a, x) => a + x.ok, 0) / sam : null }; });
+  const tdqa = per.reduce((a, x) => a + x.dqa, 0), twork = per.reduce((a, x) => a + x.work, 0);
+  $('perfKpis').innerHTML = [[fmt(tdqa), 'Data QA'], [fmt(twork, 1), 'Working hours'], [twork ? fmt(tdqa / twork, 2) : '—', 'Data QA per hour'], [fmt(per.reduce((a, x) => a + x.revs, 0)), 'Reviews']]
+    .map(([v, l]) => '<div class="kpi"><b>' + v + '</b><span>' + l + '</span></div>').join('');
+  $('perfTable').innerHTML = '<tr><th>Name</th><th class="num">Days present</th><th class="num">Data QA</th><th class="num">Working h</th><th class="num">QA / h</th><th class="num">Reviews</th><th class="num">Deductive h</th><th class="num">QA score</th></tr>' +
+    per.sort((a, b) => b.dqa - a.dqa).map(x => '<tr><td>' + esc(x.m.name) + '</td><td class="num">' + x.days + '</td><td class="num">' + fmt(x.dqa) + '</td><td class="num">' + fmt(x.work, 2) + '</td><td class="num">' + (x.rate == null ? '—' : fmt(x.rate, 2)) + '</td><td class="num">' + fmt(x.revs) + '</td><td class="num">' + fmt(x.ded, 2) + '</td><td class="num">' + (x.score == null ? '—' : fmt(x.score, 1) + '%') + '</td></tr>').join('');
+}
+
+/* ===== QA reviews (Reviewers Sheet) ===== */
+const qFrom = $('qFrom'), qTo = $('qTo');
+function initQA() {
+  const sel = $('qWho'), cur = sel.value;
+  sel.innerHTML = '<option value="">Everyone</option>' + D.members.map(m => '<option value="' + esc(m.ldap) + '">' + esc(m.name) + '</option>').join('');
+  sel.value = cur; if (!qTo.value) { qTo.value = D.today; qFrom.value = addDays(D.today, -6); }
+}
+document.querySelectorAll('[data-qrange]').forEach(b => b.onclick = () => { qTo.value = D.today; qFrom.value = addDays(D.today, -b.dataset.qrange); renderQA(); });
+[qFrom, qTo, $('qWho')].forEach(el => el.onchange = renderQA);
+async function loadReviews() {
+  try {
+    const rows = await getValues(q(RS) + '!A1:T9000');
+    const h = rows.findIndex(r => String(r[0] || '').trim() === 'LDAP' && String(r[1] || '').trim().toLowerCase() === 'episode id');
+    if (h < 0) throw { message: 'Could not find the "LDAP | Episode ID" header row in the Reviewers Sheet.' };
+    const head = rows[h].map(x => String(x).replace(/\s+/g, ' ').trim()), low = head.map(x => x.toLowerCase());
+    const find = (re, d) => { const i = low.findIndex(x => re.test(x)); return i < 0 ? d : i; };
+    const cols = { task: find(/task/, 2), dEval: find(/evaluat/, 3), dRev: find(/reviewed/, 4), reviewer: find(/reviewer/, 5), shift: find(/shift/, 6), sam: find(/^#? ?data qa$/, 7), ok: find(/perfect/, 8), err: find(/error/, 9) };
+    const cats = []; let notes = -1, j = cols.err + 1;
+    for (; j < head.length; j++) { if (!head[j]) break; if (/note|comment|feedback|remark|mistake|^other/.test(low[j])) { notes = j; break; } cats.push({ col: j, name: head[j], options: [] }); }
+    const S = { headerRow: h + 1, cols, cats, notesCol: notes, notesName: notes > -1 ? head[notes] : '', width: Math.max(notes, cats.length ? cats[cats.length - 1].col : cols.err) + 1, perfect: 'no changes needed', reviewers: [], shifts: [] };
+    const list = [];
+    rows.slice(h + 1).forEach((r, i) => { const rec = revRec(S, r, S.headerRow + 1 + i); if (rec) list.push(rec); });
+    S.lastRow = list.length ? Math.max(...list.map(x => x.row)) : S.headerRow;
+    Q = { setup: S, rows: list };
+    renderQA(); renderReport(); renderPerf(); renderChecks(); renderBucket();
+    loadReviewOptions();
+  } catch (e) { $('qaRows').innerHTML = '<tr><td class="empty">Could not read the Reviewers Sheet: ' + esc(errText(e)) + '</td></tr>'; }
+}
+function revRec(S, r, row) {
+  const g = i => String(r[i] == null ? '' : r[i]).trim();
+  const ldap = g(0).toLowerCase(), ep = g(1); if (!ldap && !ep) return null;
+  return { row, ldap, ep, task: g(S.cols.task), dEval: parseDay(g(S.cols.dEval)), dRev: parseDay(g(S.cols.dRev)), reviewer: g(S.cols.reviewer), shift: g(S.cols.shift),
+    sam: num(g(S.cols.sam)), ok: num(g(S.cols.ok)), err: num(g(S.cols.err)), cats: S.cats.map(c => g(c.col)), notes: S.notesCol > -1 ? g(S.notesCol) : '' };
+}
+/** Dropdown options of the first data row (reviewer, shift, categories). */
+async function loadReviewOptions() {
+  const S = Q.setup, r = S.headerRow + 1;
+  try {
+    const p = await gs('get_spreadsheet', { spreadsheetId: SID(), includeGridData: true, ranges: [q(RS) + '!A' + r + ':' + colL(S.width - 1) + r], fields: ['sheets.data.rowData.values.dataValidation'] });
+    const vals = (((((p.sheets || [])[0] || {}).data || [])[0] || {}).rowData || [{}])[0].values || [];
+    const opts = i => { const dv = (vals[i] || {}).dataValidation; if (!dv || !dv.condition || dv.condition.type !== 'ONE_OF_LIST') return []; return (dv.condition.values || []).map(v => v.userEnteredValue).filter(Boolean); };
+    S.reviewers = opts(S.cols.reviewer); S.shifts = opts(S.cols.shift);
+    S.cats.forEach(c => { c.options = opts(c.col); c.options.forEach(o => { if (/no change/i.test(o)) S.perfect = o; }); });
+  } catch (e) { /* free-text fields still work */ }
+  renderBucket();
+}
+const isPerfect = v => String(v || '').trim().toLowerCase() === String(Q.setup.perfect).toLowerCase();
+function renderQA() {
+  if (!Q || !D) return;
+  const S = Q.setup, who = $('qWho').value, f = qFrom.value, t = qTo.value;
+  const rows = Q.rows.filter(r => { const d = r.dRev || r.dEval; return d && d >= f && d <= t && (!who || r.ldap === who); }).sort((a, b) => (b.dRev || b.dEval).localeCompare(a.dRev || a.dEval) || b.row - a.row);
+  const blank = () => ({ eps: 0, tasks: new Set(), sam: 0, ok: 0, fb: 0, cat: S.cats.map(() => 0) }), by = {}, tot = blank();
+  rows.forEach(r => { const s = by[r.ldap] || (by[r.ldap] = blank()); [s, tot].forEach(x => { x.eps++; x.tasks.add(r.task); x.sam += r.sam; x.ok += r.ok; if (r.err > 0) x.fb++; r.cats.forEach((v, k) => { if (isPerfect(v)) x.cat[k]++; }); }); });
+  const people = Object.keys(by).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+  const line = (label, s, l) => '<tr' + (l ? ' class="pick" data-l="' + esc(l) + '"' : '') + '><td>' + label + '</td><td class="num">' + s.eps + '</td><td class="num">' + s.tasks.size + '</td><td class="num">' + fmt(s.sam) + '</td><td class="num">' + fmt(s.ok) + '</td><td class="num">' + s.fb + '</td><td class="num">' + (s.eps - s.fb) + '</td><td class="num"><b>' + (s.sam ? fmt(100 * s.ok / s.sam, 1) + '%' : '—') + '</b></td>' + s.cat.map(n => '<td class="num">' + n + ' / ' + s.eps + '</td>').join('') + '</tr>';
+  $('qaScores').innerHTML = people.length ? '<tr><th>Annotator</th><th class="num">Episodes sampled</th><th class="num">Unique tasks</th><th class="num">Categories sampled</th><th class="num">Perfect</th><th class="num">With feedback</th><th class="num">No feedback</th><th class="num">QA score</th>' + S.cats.map(c => '<th class="num">' + esc(c.name) + ' ok</th>').join('') + '</tr>' + people.map(l => line(esc(nameOf(l)), by[l], l)).join('') + (people.length > 1 ? line('<b>Team</b>', tot) : '') : '<tr><td class="empty">No reviews in this period.</td></tr>';
+  document.querySelectorAll('#qaScores tr.pick').forEach(tr => tr.onclick = () => { const s = $('qWho'); s.value = s.value === tr.dataset.l ? '' : tr.dataset.l; renderQA(); });
+  const shown = rows.slice(0, 400);
+  $('qaCount').textContent = '— ' + rows.length + ' in this period' + (rows.length > shown.length ? ', showing the newest 400' : '');
+  $('qaRows').innerHTML = rows.length ? '<tr><th>Date reviewed</th><th>Annotator</th><th>Episode ID</th><th>Task</th><th>Reviewer</th>' + S.cats.map(c => '<th>' + esc(c.name) + '</th>').join('') + '<th class="num">Score</th><th>' + esc(S.notesName || 'Notes') + '</th><th></th></tr>' +
+    shown.map(r => '<tr><td>' + esc(r.dRev || r.dEval) + '</td><td>' + esc(nameOf(r.ldap)) + '</td><td class="ellip" title="' + esc(r.ep) + '">' + esc(r.ep) + '</td><td class="ellip" title="' + esc(r.task) + '">' + esc(r.task) + '</td><td>' + esc(r.reviewer) + '</td>' +
+      r.cats.map(v => '<td>' + (isPerfect(v) ? '<span class="tag ok">✓</span>' : '<span class="tag off">' + esc(v || '—') + '</span>') + '</td>').join('') +
+      '<td class="num">' + fmt(r.ok) + ' / ' + fmt(r.sam) + '</td><td class="ellip small" title="' + esc(r.notes) + '">' + esc(r.notes) + '</td><td><button type="button" class="btn sm" data-edit="' + r.row + '">Edit</button></td></tr>').join('')
+    : '<tr><td class="empty">No reviews in this period. Use “+ Log a review” to add one.</td></tr>';
+}
+$('qaRows').onclick = e => { const b = e.target.closest('[data-edit]'); if (b) qaOpen(+b.dataset.edit); };
+$('qaNewBtn').onclick = () => qaOpen(0);
+let qaEdit = null;
+function pick(id, label, options, value, cls) {
+  const opts = options.slice(); if (value && !opts.includes(value)) opts.unshift(value);
+  if (opts.length) return '<label class="' + (cls || '') + '">' + label + '<select id="' + id + '"><option value=""></option>' + opts.map(o => '<option' + (o === value ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select></label>';
+  return '<label class="' + (cls || '') + '">' + label + '<input id="' + id + '" value="' + esc(value || '') + '"></label>';
+}
+function qaOpen(row) {
+  if (!Q) return toast('Reviews are still loading');
+  const S = Q.setup, r = row ? Q.rows.find(x => x.row === row) : null; qaEdit = r; $('qaBulk').hidden = true;
+  let last = {}; try { last = JSON.parse(localStorage.getItem('t39qaLast') || '{}'); } catch (e) {}
+  const v = r || { ldap: $('qWho').value, ep: '', task: '', dEval: D.today, dRev: D.today, reviewer: last.reviewer || '', shift: last.shift || S.shifts[0] || '', cats: S.cats.map(() => S.perfect), notes: '' };
+  const seen = k => [...new Set([S.perfect, ...Q.rows.map(x => x.cats[k]).filter(Boolean)])].slice(0, 30);
+  const f = $('qaForm');
+  f.innerHTML = '<div class="row"><b>' + (r ? 'Edit review (Reviewers Sheet row ' + r.row + ')' : 'Log a review') + '</b><div class="spacer"></div><span class="tag" id="qaPrev"></span></div>' +
+    '<div class="qgrid"><label>Annotator<select id="fLdap"><option value=""></option>' + D.members.map(m => '<option value="' + esc(m.ldap) + '"' + (m.ldap === v.ldap ? ' selected' : '') + '>' + esc(m.name) + '</option>').join('') + '</select></label>' +
+    '<label class="wide">Episode ID<input id="fEp" value="' + esc(v.ep) + '" placeholder="2026-11-14-082742Z-h2_0520-…"></label><label class="wide">Task name<input id="fTask" value="' + esc(v.task) + '"></label>' +
+    '<label>Date evaluated<input type="date" id="fEval" value="' + esc(v.dEval) + '"></label><label>Date reviewed<input type="date" id="fRev" value="' + esc(v.dRev) + '"></label>' +
+    pick('fReviewer', 'Reviewer LDAP', S.reviewers.length ? S.reviewers : D.members.map(m => m.ldap), v.reviewer) + pick('fShift', 'Shift', S.shifts, v.shift) + '</div>' +
+    '<div class="muted small">Anything other than “' + esc(S.perfect) + '” counts as a mistake. Perfect and Errors are the sheet’s formulas; # Data QA is left as the sheet has it.</div>' +
+    '<div class="qgrid">' + S.cats.map((c, k) => c.options.length ? pick('fCat' + k, esc(c.name), c.options, v.cats[k] || S.perfect) :
+      '<label>' + esc(c.name) + '<input id="fCat' + k + '" list="fl' + k + '" value="' + esc(v.cats[k] || S.perfect) + '"><datalist id="fl' + k + '">' + seen(k).map(o => '<option value="' + esc(o) + '">').join('') + '</datalist></label>').join('') + '</div>' +
+    (S.notesCol > -1 ? '<label class="qblock">Notes on mistakes (' + esc(S.notesName) + ' column)<textarea id="fNotes" rows="3">' + esc(v.notes) + '</textarea></label>' : '<p class="muted small">The Reviewers Sheet has no notes column, so notes are not saved.</p>') +
+    '<div id="fDup"></div>' +
+    '<div class="row"><button type="button" class="btn primary" id="fSave">' + (r ? 'Save changes' : 'Save to Reviewers Sheet') + '</button><button type="button" class="btn" id="fCancel">Cancel</button><div class="spacer"></div>' + (r ? '<button type="button" class="btn danger" id="fDel">Delete review</button>' : '') + '</div>';
+  f.hidden = false;
+  S.cats.forEach((c, k) => { const el = $('fCat' + k); el.oninput = el.onchange = qaPrev; });
+  $('fSave').onclick = qaSave; $('fCancel').onclick = () => { f.hidden = true; qaEdit = null; };
+  ['fEp', 'fRev', 'fEval'].forEach(id => $(id).oninput = $(id).onchange = qaDupNote); qaDupNote();
+  if (r) $('fDel').onclick = e => arm(e.currentTarget, 'Click again to delete', qaDelete);
+  qaPrev(); f.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+const qaCats = () => Q.setup.cats.map((c, k) => $('fCat' + k).value.trim());
+/* An episode may be reviewed again on another day (a new row); twice on the same day is refused. */
+const revDay = x => x.dRev || x.dEval || '';
+function priorReviews(ep, day, exceptRow) {
+  const list = ep ? Q.rows.filter(x => x.ep === ep && x.row !== exceptRow) : [];
+  return { list, sameDay: day ? list.find(x => revDay(x) === day) : null };
+}
+const priorText = list => list.map(x => (revDay(x) ? longDate(revDay(x)) : 'no date') + (x.reviewer ? ' by ' + x.reviewer : '') + ' (row ' + x.row + ', ' + fmt(x.ok) + ' / ' + fmt(x.sam) + ' perfect)').join('; ');
+/** Live note under the form; also resets the "save anyway" confirmation when the episode or date changes. */
+function qaDupNote() {
+  const el = $('fDup'), btn = $('fSave'); if (!el || !btn) return;
+  const ep = $('fEp').value.trim(), day = $('fRev').value || $('fEval').value, p = priorReviews(ep, day, qaEdit ? qaEdit.row : 0);
+  if (btn.dataset.dupOk && btn.dataset.dupOk !== ep + '|' + day) { delete btn.dataset.dupOk; btn.textContent = qaEdit ? 'Save changes' : 'Save to Reviewers Sheet'; }
+  el.innerHTML = !p.list.length ? '' : p.sameDay
+    ? '<div class="banner err">Already reviewed on ' + esc(longDate(day)) + ' (row ' + p.sameDay.row + '). Edit that row instead, or pick another date reviewed.</div>'
+    : '<div class="banner warn">Already reviewed before: ' + esc(priorText(p.list)) + '. Saving adds a new review for ' + esc(day ? longDate(day) : 'this day') + '.</div>';
+}
+function qaPrev() {
+  const cats = qaCats(), ok = cats.filter(v => !v || isPerfect(v)).length;
+  Q.setup.cats.forEach((c, k) => $('fCat' + k).classList.toggle('bad', !!cats[k] && !isPerfect(cats[k])));
+  const p = $('qaPrev'); p.textContent = ok + ' / ' + cats.length + ' perfect'; p.className = 'tag ' + (ok === cats.length ? 'ok' : 'off');
+}
+/** One Reviewers Sheet row as written: null = leave the cell alone (formulas H–J and unknown columns). */
+function reviewRow(S, v) {
+  const row = new Array(S.width).fill(null);
+  row[0] = v.ldap; row[1] = v.ep; row[S.cols.task] = v.task;
+  row[S.cols.dEval] = v.dEval ? serialOf(v.dEval) : ''; row[S.cols.dRev] = v.dRev ? serialOf(v.dRev) : '';
+  row[S.cols.reviewer] = v.reviewer; row[S.cols.shift] = v.shift;
+  S.cats.forEach((c, k) => row[c.col] = v.cats[k] || S.perfect);
+  if (S.notesCol > -1) row[S.notesCol] = v.notes;
+  return row;
+}
+async function qaSave() {
+  const S = Q.setup, g = id => ($(id) ? $(id).value.trim() : '');
+  const v = { ldap: g('fLdap'), ep: g('fEp'), task: g('fTask'), dEval: g('fEval') || g('fRev'), dRev: g('fRev') || g('fEval'), reviewer: g('fReviewer'), shift: g('fShift'), cats: qaCats(), notes: $('fNotes') ? $('fNotes').value.trim() : '' };
+  if (!v.ldap || !v.ep) return toast('Pick the annotator and enter the Episode ID');
+  const btn = $('fSave'), p = priorReviews(v.ep, v.dRev, qaEdit ? qaEdit.row : 0), key = v.ep + '|' + v.dRev;
+  if (p.sameDay) { qaDupNote(); return toast('Already reviewed on ' + longDate(v.dRev) + ' (row ' + p.sameDay.row + ')'); }
+  if (p.list.length && (!qaEdit || qaEdit.ep !== v.ep) && btn.dataset.dupOk !== key) {
+    btn.dataset.dupOk = key; btn.textContent = 'Save anyway as a new review'; qaDupNote();
+    return toast('This episode was reviewed before. Click again to save it for ' + longDate(v.dRev));
+  }
+  btn.disabled = true; status('busy', 'Saving review…');
+  try {
+    let row;
+    if (qaEdit) {
+      row = qaEdit.row;
+      const cur = (await getValues(q(RS) + '!B' + row + ':B' + row))[0] || [];
+      if (String(cur[0] || '').trim() !== qaEdit.ep) throw { message: 'Row ' + row + ' changed in the sheet since it was loaded. Press Reload and try again.' };
+    } else {
+      const tail = await getValues(q(RS) + '!A' + (S.lastRow + 1) + ':B' + (S.lastRow + 50));
+      let off = tail.findIndex(r => !String(r[0] || '').trim() && !String(r[1] || '').trim()); if (off < 0) off = tail.length;
+      row = S.lastRow + 1 + off;
+      const fc = await formulaCells(RS, row, 0, row, S.width - 1);
+      if (![S.cols.ok, S.cols.err].every(c => fc.has('0,' + c))) throw { message: 'Row ' + row + ' of the Reviewers Sheet has no Perfect / Errors formulas yet. Copy those formulas down in the sheet, then save again.' };
+    }
+    await safeWrite(RS, row, 0, [reviewRow(S, v)]);
+    const back = (await getValues(q(RS) + '!A' + row + ':' + colL(S.width - 1) + row))[0] || [];
+    const saved = revRec(S, back, row);
+    try { localStorage.setItem('t39qaLast', JSON.stringify({ reviewer: v.reviewer, shift: v.shift })); } catch (e) {}
+    const ix = Q.rows.findIndex(x => x.row === row); if (ix > -1) Q.rows[ix] = saved; else Q.rows.push(saved);
+    S.lastRow = Math.max(S.lastRow, row);
+    $('qaForm').hidden = true; qaEdit = null; renderQA(); renderReport(); renderChecks();
+    status('ok', 'Saved ' + nowT()); toast('Saved: ' + nameOf(saved.ldap) + ' ' + fmt(saved.ok) + ' / ' + fmt(saved.sam) + ' perfect (row ' + row + ')');
+  } catch (e) { status('err', 'Not saved'); toast('Not saved — ' + errText(e)); }
+  finally { if ($('fSave')) $('fSave').disabled = false; }
+}
+async function qaDelete() {
+  const S = Q.setup, r = qaEdit; if (!r) return;
+  status('busy', 'Deleting review…');
+  try {
+    const cur = (await getValues(q(RS) + '!B' + r.row + ':B' + r.row))[0] || [];
+    if (String(cur[0] || '').trim() !== r.ep) throw { message: 'Row ' + r.row + ' changed in the sheet since it was loaded. Press Reload.' };
+    const blank = reviewRow(S, { ldap: '', ep: '', task: '', dEval: '', dRev: '', reviewer: '', shift: '', cats: S.cats.map(() => ''), notes: '' }).map(x => x == null ? null : '');
+    S.cats.forEach(c => blank[c.col] = '');
+    await safeWrite(RS, r.row, 0, [blank]);
+    Q.rows = Q.rows.filter(x => x.row !== r.row); $('qaForm').hidden = true; qaEdit = null; renderQA(); renderReport();
+    status('ok', 'Deleted ' + nowT()); toast('Review removed from row ' + r.row + ' (formulas kept)');
+  } catch (e) { status('err', 'Not deleted'); toast('Not deleted — ' + errText(e)); }
+}
+
+/* ===== QA reviews: bulk add (many Reviewers Sheet rows in one write) ===== */
+let B = { items: [] };
+$('qaBulkBtn').onclick = () => qaBulkOpen();
+/** "episode" or "ldap, episode[, task]" per line (tab, comma or spaces between). */
+function bulkParse(text) {
+  const team = new Set(D.members.map(m => m.ldap));
+  return text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(line => {
+    const parts = line.split(/[\t,]|\s+/).map(s => s.trim()).filter(Boolean);
+    const it = { ldap: '', ep: '', task: '', notes: '', cats: Q.setup.cats.map(() => Q.setup.perfect) };
+    parts.forEach(p => { const low = p.toLowerCase(); if (!it.ldap && team.has(low)) it.ldap = low; else if (!it.ep) it.ep = p; else if (!it.task) it.task = p; else it.notes = (it.notes ? it.notes + ' ' : '') + p; });
+    return it;
+  }).filter(it => it.ep);
+}
+function qaBulkOpen() {
+  if (!Q) return toast('Reviews are still loading');
+  $('qaForm').hidden = true; qaEdit = null;
+  const S = Q.setup; let last = {}; try { last = JSON.parse(localStorage.getItem('t39qaLast') || '{}'); } catch (e) {}
+  const f = $('qaBulk');
+  f.innerHTML = '<div class="row"><b>Bulk add reviews</b><span class="muted small">Shared details apply to every row unless a row sets its own.</span><div class="spacer"></div><button type="button" class="btn sm" id="bClose">Close</button></div>' +
+    '<div class="qgrid"><label>Annotator<select id="bLdap"><option value="">Set on each line</option>' + D.members.map(m => '<option value="' + esc(m.ldap) + '"' + (m.ldap === $('qWho').value ? ' selected' : '') + '>' + esc(m.name) + '</option>').join('') + '</select></label>' +
+    '<label class="wide">Task name<input id="bTask" spellcheck="false"></label>' +
+    '<label>Date evaluated<input type="date" id="bEval" value="' + D.today + '"></label><label>Date reviewed<input type="date" id="bRev" value="' + D.today + '"></label>' +
+    pick('bReviewer', 'Reviewer LDAP', S.reviewers.length ? S.reviewers : D.members.map(m => m.ldap), last.reviewer || '') + pick('bShift', 'Shift', S.shifts, last.shift || S.shifts[0] || '') + '</div>' +
+    '<label class="qblock">Episode IDs, one per line. A line can also be “ldap, episode ID, task” (tabs work too, so rows pasted from a sheet are fine).<textarea id="bText" rows="5" spellcheck="false" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px"></textarea></label>' +
+    '<div class="row"><button type="button" class="btn" id="bBuild">Add to list</button><span class="muted small">Every category starts as “' + esc(S.perfect) + '”. Change only the ones with mistakes.</span></div>' +
+    '<div class="tablewrap" style="margin-top:10px"><table id="bTable"></table></div>' +
+    '<div class="row" style="margin-top:10px"><button type="button" class="btn primary" id="bSave" disabled>Save</button><button type="button" class="btn" id="bClear">Clear list</button><div class="spacer"></div><span class="muted small" id="bNote"></span></div>';
+  f.hidden = false;
+  $('bClose').onclick = () => { f.hidden = true; };
+  $('bBuild').onclick = () => { const add = bulkParse($('bText').value); if (!add.length) return toast('Paste at least one Episode ID'); B.items = B.items.concat(add); $('bText').value = ''; bulkRender(); };
+  $('bClear').onclick = e => arm(e.currentTarget, 'Click again to clear', () => { B.items = []; bulkRender(); });
+  $('bSave').onclick = e => { const again = bulkCheck().filter(c => !c.problem && c.warn).length;
+    if (again) arm(e.currentTarget, 'Click again: ' + again + ' reviewed before', bulkSave); else bulkSave(); };
+  ['bLdap', 'bTask', 'bRev', 'bEval'].forEach(id => $(id).oninput = $(id).onchange = bulkRender);
+  bulkRender(); f.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+const bShared = () => ({ ldap: $('bLdap').value, task: $('bTask').value.trim() });
+/** Effective row + problem (rows with a problem are skipped on save). */
+function bulkCheck() {
+  const sh = bShared(), seen = {}, day = $('bRev').value || $('bEval').value;
+  return B.items.map((it, i) => {
+    const v = { ...it, ldap: it.ldap || sh.ldap, task: it.task || sh.task }; let problem = '', warn = '';
+    const p = priorReviews(v.ep, day, 0);
+    if (!v.ldap) problem = 'Pick the annotator';
+    else if (p.sameDay) problem = 'Already reviewed that day (row ' + p.sameDay.row + ')';
+    else if (seen[v.ep] != null) problem = 'Repeats line ' + (seen[v.ep] + 1);
+    if (!problem && p.list.length) warn = 'Reviewed before: ' + p.list.map(x => (revDay(x) ? longDate(revDay(x)) : 'no date') + ' (row ' + x.row + ')').join(', ');
+    if (seen[v.ep] == null) seen[v.ep] = i;
+    return { v, problem, warn };
+  });
+}
+function bulkRender() {
+  const S = Q.setup, chk = bulkCheck(), sh = bShared(), ok = chk.filter(c => !c.problem).length;
+  const catCell = (it, i, k) => { const c = S.cats[k], val = it.cats[k] || S.perfect, bad = !isPerfect(val) ? ' class="bad"' : '';
+    if (c.options.length) { const o = c.options.includes(val) ? c.options : [val].concat(c.options); return '<td><select data-i="' + i + '" data-f="c' + k + '"' + bad + '>' + o.map(x => '<option' + (x === val ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></td>'; }
+    return '<td><input data-i="' + i + '" data-f="c' + k + '" value="' + esc(val) + '"' + bad + '></td>'; };
+  $('bTable').innerHTML = B.items.length ? '<tr><th>#</th><th>Annotator</th><th>Episode ID</th><th>Task</th>' + S.cats.map(c => '<th>' + esc(c.name) + '</th>').join('') + '<th>' + esc(S.notesName || 'Notes') + '</th><th></th><th></th></tr>' +
+    B.items.map((it, i) => { const p = chk[i].problem, w = chk[i].warn;
+      return '<tr' + (p ? ' class="skip"' : '') + '><td class="muted">' + (i + 1) + '</td>' +
+        '<td><select data-i="' + i + '" data-f="ldap"><option value="">' + (sh.ldap ? esc(nameOf(sh.ldap)) + ' (shared)' : '—') + '</option>' + D.members.map(m => '<option value="' + esc(m.ldap) + '"' + (m.ldap === it.ldap ? ' selected' : '') + '>' + esc(m.name) + '</option>').join('') + '</select></td>' +
+        '<td class="ep"><input data-i="' + i + '" data-f="ep" value="' + esc(it.ep) + '" spellcheck="false"></td>' +
+        '<td><input data-i="' + i + '" data-f="task" value="' + esc(it.task) + '" placeholder="' + esc(sh.task || 'task name') + '"></td>' +
+        S.cats.map((c, k) => catCell(it, i, k)).join('') +
+        (S.notesCol > -1 ? '<td><input data-i="' + i + '" data-f="notes" value="' + esc(it.notes) + '" placeholder="mistake notes"></td>' : '<td></td>') +
+        '<td>' + (p ? '<span class="tag bad">' + esc(p) + '</span>' : w ? '<span class="tag off" title="Saving adds a new review for this day">' + esc(w) + '</span>' : '<span class="tag ok">ready</span>') + '</td>' +
+        '<td><button type="button" class="btn sm" data-bdel="' + i + '" aria-label="Remove line">×</button></td></tr>'; }).join('')
+    : '<tr><td class="empty">No episodes in the list yet.</td></tr>';
+  $('bSave').disabled = !ok; $('bSave').textContent = ok ? 'Save ' + ok + ' review' + (ok === 1 ? '' : 's') : 'Save';
+  const skip = B.items.length - ok, again = chk.filter(c => !c.problem && c.warn).length;
+  $('bNote').textContent = [skip ? skip + ' line' + (skip === 1 ? '' : 's') + ' will be skipped' : '', again ? again + ' already reviewed on another day, saved as new reviews' : ''].filter(Boolean).join(' · ');
+}
+$('qaBulk').addEventListener('change', e => {
+  const el = e.target, i = el.dataset.i, f = el.dataset.f; if (i == null || !f) return;
+  const it = B.items[+i]; if (!it) return;
+  if (f[0] === 'c' && /^c\d+$/.test(f)) it.cats[+f.slice(1)] = el.value.trim(); else it[f] = el.value.trim();
+  bulkRender();
+});
+$('qaBulk').addEventListener('click', e => { const b = e.target.closest('[data-bdel]'); if (b) { B.items.splice(+b.dataset.bdel, 1); bulkRender(); } });
+async function bulkSave() {
+  const S = Q.setup, g = id => ($(id) ? $(id).value.trim() : '');
+  const dEval = g('bEval') || g('bRev'), dRev = g('bRev') || g('bEval'), reviewer = g('bReviewer'), shift = g('bShift');
+  const good = bulkCheck().filter(c => !c.problem).map(c => ({ ...c.v, dEval, dRev, reviewer, shift }));
+  if (!good.length) return;
+  const btn = $('bSave'); btn.disabled = true; status('busy', 'Saving ' + good.length + ' reviews…');
+  try {
+    const r = await appendReviews(good);
+    try { localStorage.setItem('t39qaLast', JSON.stringify({ reviewer, shift })); } catch (e) {}
+    const saved = new Set(r.saved.map(v => v.ep)); B.items = B.items.filter(it => !saved.has(it.ep));
+    bulkRender();
+    status('ok', 'Saved ' + nowT()); toast(reviewSavedText(r));
+  } catch (e) { status('err', 'Not saved'); toast('Not saved — ' + errText(e)); bulkRender(); }
+}
+const reviewSavedText = r => (r.saved.length ? 'Saved ' + r.saved.length + ' review' + (r.saved.length === 1 ? '' : 's') + ' in one write (rows ' + r.start + '–' + (r.start + r.saved.length - 1) + ')' : 'Nothing saved') +
+  (r.skipped.length ? '. Skipped ' + r.skipped.length + ' already reviewed that day' : '');
+/**
+ * Appends reviews after the Reviewers Sheet's last filled row in one write. Rows someone else added since
+ * the page loaded are read in first (so same-day repeats are still caught), and the save runs under a
+ * short shared lock so two people saving at once never land on the same rows.
+ */
+async function appendReviews(list) {
+  const S = Q.setup;
+  return withReviewLock(async () => {
+    const tail = await getValues(q(RS) + '!A' + (S.lastRow + 1) + ':' + colL(S.width - 1) + (S.lastRow + list.length + 300));
+    let lastIdx = -1; tail.forEach((r, i) => { if (String(r[0] || '').trim() || String(r[1] || '').trim()) lastIdx = i; });
+    for (let i = 0; i <= lastIdx; i++) { const rec = revRec(S, tail[i], S.lastRow + 1 + i); if (rec && !Q.rows.some(x => x.row === rec.row)) Q.rows.push(rec); }
+    const start = S.lastRow + 1 + lastIdx + 1;
+    S.lastRow = start - 1;
+    const skipped = [], good = [];
+    list.forEach(v => { if (priorReviews(v.ep, v.dRev, 0).sameDay || good.some(g => g.ep === v.ep && g.dRev === v.dRev)) skipped.push(v); else good.push(v); });
+    if (!good.length) return { saved: [], skipped, start };
+    const n = good.length, fc = await formulaCells(RS, start, 0, start + n - 1, S.width - 1);
+    for (let i = 0; i < n; i++) if (![S.cols.ok, S.cols.err].every(c => fc.has(i + ',' + c)))
+      throw { message: 'Row ' + (start + i) + ' of the Reviewers Sheet has no Perfect / Errors formulas yet. Copy those formulas down in the sheet, then save again.' };
+    await safeWrite(RS, start, 0, good.map(v => reviewRow(S, v)));
+    const back = await getValues(q(RS) + '!A' + start + ':' + colL(S.width - 1) + (start + n - 1));
+    back.forEach((r, i) => { const rec = revRec(S, r, start + i); if (rec) Q.rows.push(rec); });
+    S.lastRow = start + n - 1;
+    renderQA(); renderReport(); renderChecks(); renderBucket();
+    return { saved: good, skipped, start };
+  });
+}
+/** Runs fn under a short shared lease (when the shared store is available), so saves from two people never overlap. */
+async function withReviewLock(fn) {
+  if (!RDB) return fn();
+  const ref = RDB.collection('locks-' + sheetKey).doc('reviewers');
+  for (let tries = 0; tries < 10; tries++) {
+    let lease; try { lease = await ref.acquire({ holder: rbHolder, ttlMs: 15000 }); } catch (e) { return fn(); }
+    if (lease.acquired) return fn();
+    await sleep(1500 + Math.random() * 1500);
+  }
+  throw { message: 'Someone else is saving reviews right now. Try again in a moment.' };
+}
+
+/* ===== my work (each member's own tab: A Episode ID, B Task, C Labels, D Date=formula, E Duration=formula, F Shift, G TYPE, H Notes, I Duplicate=formula) ===== */
+let M = null, mEdit = null, meLdap = '', mBusy = false;
+try { meLdap = localStorage.getItem('t39me') || ''; } catch (e) {}
+const isMarker = ep => /^(break|eos)$/i.test(String(ep).trim());
+/** Labels Count may be date-formatted in some tabs ("1/4/1900" = 5). */
+function labelsNum(v) { const s = String(v || '').trim(); let m; if (!s) return null; if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(1899|1900)$/))) return Math.round((Date.UTC(+m[3], +m[1] - 1, +m[2]) - Date.UTC(1899, 11, 30)) / 864e5); return num(s); }
+function mRec(r, row) {
+  const g = i => String(r[i] == null ? '' : r[i]).trim(), ep = g(0); if (!ep) return null;
+  const dRaw = g(3), tm = dRaw.match(/\s(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)$/i);
+  return { row, ep, task: g(1), labels: labelsNum(g(2)), d: parseDay(dRaw), t: tm ? tFrac(tm[1]) : null, dur: g(4), shift: g(5), type: g(6), notes: g(7), dup: g(8), marker: isMarker(ep) };
+}
+const mFrom = $('mFrom'), mTo = $('mTo');
+/** Selected range, always ordered (from ≤ to). */
+function mRange() { let f = mFrom.value || D.today, t = mTo.value || f; if (f > t) [f, t] = [t, f]; return [f, t]; }
+const daysBetween = (a, b) => Math.round((parseISO(b) - parseISO(a)) / 864e5);
+function initMine() {
+  const sel = $('meSel');
+  sel.innerHTML = '<option value="">Choose your name…</option>' + D.members.map(m => '<option value="' + esc(m.ldap) + '"' + (D.tabs.has(m.ldap) ? '' : ' disabled') + '>' + esc(m.name) + (D.tabs.has(m.ldap) ? '' : ' (no tab)') + '</option>').join('');
+  sel.value = meLdap; if (!mFrom.value) mFrom.value = mTo.value = D.today;
+}
+$('meSel').onchange = e => { meLdap = e.target.value; try { localStorage.setItem('t39me', meLdap); } catch (x) {} M = null; mCancelEdit(); $('mEp').value = ''; loadMine(); };
+/* ‹ › move the whole range by its own length (one day at a time when one day is shown). */
+document.querySelectorAll('[data-mshift]').forEach(b => b.onclick = () => { const [f, t] = mRange(), n = (daysBetween(f, t) + 1) * +b.dataset.mshift; mFrom.value = addDays(f, n); mTo.value = addDays(t, n); renderMine(); });
+document.querySelectorAll('[data-mrange]').forEach(b => b.onclick = () => { const v = b.dataset.mrange;
+  if (v === 'y') mFrom.value = mTo.value = addDays(D.today, -1); else { mTo.value = D.today; mFrom.value = addDays(D.today, -v); } renderMine(); });
+mFrom.onchange = () => { if (!mTo.value || mTo.value < mFrom.value) mTo.value = mFrom.value; renderMine(); };
+mTo.onchange = () => { if (!mFrom.value || mFrom.value > mTo.value) mFrom.value = mTo.value; renderMine(); };
+async function loadMine() {
+  if (!D) return;
+  initMine();
+  const l = meLdap;
+  $('mOpenTab').hidden = $('mRefresh').hidden = !l || !D.tabs.has(l);
+  if (!l) { $('mForm').hidden = true; $('mKpis').innerHTML = ''; $('mBanner').innerHTML = ''; $('mCount').textContent = ''; $('mRows').innerHTML = '<tr><td class="empty">Choose your name to see your entries and post work.</td></tr>'; return; }
+  if (!D.tabs.has(l)) { $('mForm').hidden = true; $('mKpis').innerHTML = ''; $('mBanner').innerHTML = '<div class="banner warn">This sheet has no tab named “' + esc(l) + '”. Copy “member tracker template” in the sheet and name the copy after your LDAP, then press Reload.</div>'; $('mRows').innerHTML = ''; return; }
+  $('mOpenTab').href = 'https://docs.google.com/spreadsheets/d/' + SID() + '/edit#gid=' + D.gids[l];
+  if (!M || M.ldap !== l) $('mRows').innerHTML = '<tr><td class="empty">Reading your tab…</td></tr>';
+  try {
+    const rows = await readTab(l);
+    if (meLdap !== l) return;
+    const list = []; let last = 1;
+    rows.forEach((r, i) => { if (!i) return; const rec = mRec(r, i + 1); if (rec) { list.push(rec); last = i + 1; } });
+    const same = M && M.ldap === l;
+    M = { ldap: l, rows: list, next: last + 1, opts: same ? M.opts : null, times: same ? M.times : {}, synced: Date.now() };
+    if (!M.opts) await loadMineOpts();
+    fillMineForm(false);
+    renderMine(); mSyncedText();
+  } catch (e) { $('mBanner').innerHTML = '<div class="banner err">Could not read your tab: ' + esc(errText(e)) + '</div>'; }
+}
+/** Like getValues, but a piece that starts below the tab's last grid row ("exceeds grid limits") is simply empty. */
+async function getPiece(range) {
+  try { return await getValues(range); }
+  catch (e) { if (/exceeds grid limits/i.test(String(e && e.message || e))) return []; throw e; }
+}
+/**
+ * Reads a member tab A:I in 500-row pieces (about 65 KB each; big tabs are 500 KB+ in one read). Index = row − 1.
+ * It stops only at a piece with no rows at all, so a short piece or a gap of blank rows never hides later entries.
+ */
+async function readTab(l) {
+  const CH = 500, out = [];
+  for (let s = 1; s < 40000; s += CH) {
+    const part = await getPiece(q(l) + '!A' + s + ':I' + (s + CH - 1));
+    if (!part.length) break;
+    part.forEach((r, i) => { out[s - 1 + i] = r; });
+  }
+  for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = [];
+  return out;
+}
+/**
+ * Picks up entries typed straight into the sheet (or from another device): re-reads the last 20 known rows
+ * and everything after them. Small read, so it runs every minute while My work is open.
+ */
+async function mSync(force) {
+  if (!M || mBusy || mEdit || M.syncing || !D) return;
+  if (!force && (document.hidden || !$('mine').classList.contains('on') || Date.now() - (M.synced || 0) < 15000)) return;
+  const l = M.ldap, from = Math.max(2, M.next - 20); M.syncing = true;
+  try {
+    // read on past the window while it comes back full, so a big paste is never cut off
+    const part = [];
+    for (let s = from; ; s += 500) {
+      const p = await getPiece(q(l) + '!A' + s + ':I' + (s + 499));
+      for (let i = 0; i < 500; i++) part[s - from + i] = p[i] || [];
+      if (!p.length || s - from > 20000) break;
+    }
+    while (part.length && !String((part[part.length - 1] || [])[0] || '').trim()) part.pop();
+    if (!M || M.ldap !== l || mBusy || mEdit) return;
+    const fresh = []; part.forEach((r, i) => { const rec = mRec(r, from + i); if (rec) fresh.push(rec); });
+    const old = M.rows.filter(r => r.row >= from), sig = a => JSON.stringify(a.map(r => [r.row, r.ep, r.task, r.labels, r.d, r.dur, r.shift, r.type, r.notes, r.dup]));
+    M.synced = Date.now();
+    if (sig(old) !== sig(fresh)) {
+      const oldEp = {}; old.forEach(r => oldEp[r.row] = r.ep);
+      fresh.forEach(r => { if (oldEp[r.row] !== r.ep) delete M.times[r.row]; });
+      M.rows = M.rows.filter(r => r.row < from).concat(fresh);
+      M.next = (M.rows.length ? M.rows[M.rows.length - 1].row : 1) + 1;
+      const added = fresh.length - old.length;
+      fillMineForm(false); renderMine();
+      const days = [...new Set(fresh.map(r => r.d).filter(Boolean))]; for (const d of days) await mRefreshMain(d);
+      if (force || added) toast(added > 0 ? added + ' new entr' + (added === 1 ? 'y' : 'ies') + ' from the sheet' : 'Your tab was updated from the sheet');
+    } else if (force) toast('Up to date');
+  } catch (e) { if (force) toast('Could not refresh — ' + errText(e)); }
+  finally { if (M) M.syncing = false; mSyncedText(); }
+}
+function mSyncedText() {
+  if (!M || !M.synced) { $('mSynced').textContent = ''; return; }
+  const last = M.rows.length ? M.rows[M.rows.length - 1] : null;
+  $('mSynced').textContent = 'Synced ' + new Date(M.synced).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' · ' + fmt(M.rows.length) + ' entries' + (last ? ', last in row ' + last.row + (last.d ? ' (' + longDate(last.d) + ')' : '') : '');
+}
+$('mRefresh').onclick = () => mSync(true);
+setInterval(() => mSync(false), 60 * 1000);
+window.addEventListener('focus', () => mSync(false));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) mSync(false); });
+/** Shift and TYPE dropdown options from the next empty row of the member's tab. */
+async function loadMineOpts() {
+  const r = M.next; let shift = [], type = [];
+  try {
+    const p = await gs('get_spreadsheet', { spreadsheetId: SID(), includeGridData: true, ranges: [q(M.ldap) + '!F' + r + ':G' + r], fields: ['sheets.data.rowData.values.dataValidation'] });
+    const vals = (((((p.sheets || [])[0] || {}).data || [])[0] || {}).rowData || [{}])[0].values || [];
+    const opts = i => { const dv = (vals[i] || {}).dataValidation; return dv && dv.condition && dv.condition.type === 'ONE_OF_LIST' ? (dv.condition.values || []).map(v => v.userEnteredValue).filter(Boolean) : []; };
+    shift = opts(0); type = opts(1);
+  } catch (e) {}
+  M.opts = { shift: shift.length ? shift : ['CORE HOURS', 'EXTRA HOURS'], type: type.length ? type : ['DATA', 'TEXT LABELING', 'REVIEW', 'QA'] };
+}
+function setSel(el, opts, val) { const o = opts.slice(); if (val && !o.includes(val)) o.push(val); el.innerHTML = o.map(x => '<option' + (x === val ? ' selected' : '') + '>' + esc(x) + '</option>').join(''); }
+/** Defaults = your latest entry (same task / type / shift), so posting the next episode is one paste. */
+function fillMineForm(force) {
+  if (!M || mEdit) return;
+  $('mForm').hidden = false;
+  const lastWork = [...M.rows].reverse().find(r => !r.marker) || {};
+  const curType = $('mType').value, curShift = $('mShift').value;
+  setSel($('mType'), M.opts.type, force || !curType ? (lastWork.type || M.opts.type[0]) : curType);
+  setSel($('mShift'), M.opts.shift, force || !curShift ? (lastWork.shift || M.opts.shift[0]) : curShift);
+  if (force || !$('mTask').value) $('mTask').value = lastWork.task || '';
+  const tasks = []; [...M.rows].reverse().forEach(r => { if (r.task && !tasks.includes(r.task) && tasks.length < 25) tasks.push(r.task); });
+  $('mTaskList').innerHTML = tasks.map(t => '<option value="' + esc(t) + '">').join('');
+}
+function renderMine() {
+  if (!D || !M || M.ldap !== meLdap) return;
+  const [f, t] = mRange(), single = f === t;
+  const rows = M.rows.filter(r => r.d >= f && r.d <= t), work = rows.filter(r => !r.marker);
+  const cnt = (list, ty) => list.filter(r => r.type.toUpperCase() === ty).length;
+  const mtOf = d => { const day = D.days[d]; return day && day.rows.find(r => r.ldap === M.ldap); };
+  const lastRow = M.rows.length ? M.rows[M.rows.length - 1].row : 0;
+  // banners: today's attendance, and days with entries that Main Tracker has no block for
+  const today = mtOf(D.today), noBlock = [...new Set(rows.map(r => r.d))].filter(d => d && d <= D.today && !D.days[d]);
+  let ban = '';
+  if (noBlock.length) ban += '<div class="banner warn">Main Tracker has no block for ' + noBlock.map(longDate).join(', ') + ', so those entries are not counted there until the day is added.</div>';
+  if (f <= D.today && t >= D.today && today && !today.present) ban += '<div class="banner info row" style="margin-bottom:14px"><span>You are not marked present in Main Tracker today.</span><button type="button" class="btn sm primary" id="mPresent">Mark me present</button></div>';
+  $('mBanner').innerHTML = ban;
+  if ($('mPresent')) $('mPresent').onclick = async () => { const s = defShift(today.ldap); await writeAndRefresh(D.days[D.today], today.row, today.row, C.tin, [[s.tin, s.brk, s.tout]], 'You are marked present'); renderMine(); };
+  // totals for the whole range
+  const days = [...new Set(work.map(r => r.d))].filter(Boolean);
+  let mtQa = 0, mtRev = 0, mtAny = false;
+  for (let d = f; d <= t; d = addDays(d, 1)) { const m = mtOf(d); if (m) { mtAny = true; mtQa += m.dqa; mtRev += m.revs; } if (daysBetween(f, d) > 400) break; }
+  const k = [[cnt(work, 'DATA'), 'Data QA posted'], [cnt(work, 'TEXT LABELING'), 'Text labeling'], [cnt(work, 'REVIEW'), 'Reviews']];
+  if (cnt(work, 'QA')) k.push([cnt(work, 'QA'), 'QA']);
+  k.push([fmt(work.reduce((a, r) => a + (r.labels || 0), 0)), 'Labels']);
+  const extra = work.filter(r => /extra/i.test(r.shift)).length; if (extra) k.push([extra, 'On extra hours']);
+  if (!single) k.push([days.length, 'Days with work'], [days.length ? fmt(cnt(work, 'DATA') / days.length, 1) : '—', 'Data QA per working day']);
+  k.push([mtAny ? fmt(mtQa) + ' · ' + fmt(mtRev) : '—', 'Main Tracker data QA · reviews']);
+  $('mKpis').innerHTML = k.map(([v, l]) => '<div class="kpi"><b>' + v + '</b><span>' + l + '</span></div>').join('');
+  $('mCount').textContent = '— ' + (single ? longDate(f) : longDate(f) + ' to ' + longDate(t)) + ' · ' + work.length + ' episode' + (work.length === 1 ? '' : 's') + (rows.length > work.length ? ', ' + (rows.length - work.length) + ' break / EOS' : '');
+  // entries grouped by day, newest day first; each day starts with its own totals
+  const LIMIT = 1500, shown = rows.slice(-LIMIT).reverse();
+  const tOf = r => r.t != null ? r.t : M.times[r.row] >= 0 ? M.times[r.row] : null;
+  const byDay = {}; shown.forEach(r => (byDay[r.d] = byDay[r.d] || []).push(r));
+  const dayHead = d => {
+    const all = rows.filter(r => r.d === d), w = all.filter(r => !r.marker), ts = all.map(tOf).filter(x => x != null), m = mtOf(d);
+    const bits = [cnt(w, 'DATA') + ' data QA'];
+    if (cnt(w, 'TEXT LABELING')) bits.push(cnt(w, 'TEXT LABELING') + ' text labeling'); if (cnt(w, 'REVIEW')) bits.push(cnt(w, 'REVIEW') + ' reviews'); if (cnt(w, 'QA')) bits.push(cnt(w, 'QA') + ' QA');
+    const span = ts.length ? fmtT(Math.min(...ts)) + ' – ' + fmtT(Math.max(...ts)) : '';
+    return '<tr class="dayhead"><td colspan="9"><b>' + esc(d ? parseISO(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'No date') + '</b>' +
+      '<span class="muted small"> · ' + bits.join(' · ') + (span ? ' · ' + span : '') + (m ? ' · Main Tracker ' + fmt(m.dqa) + ' data QA' : '') + '</span></td></tr>';
+  };
+  const line = r => '<tr class="' + (r.marker ? 'marker' : '') + (mEdit && mEdit.row === r.row ? ' editing' : '') + '"><td>' + (tOf(r) == null ? '<span class="muted">…</span>' : fmtT(tOf(r))) + '</td>' +
+    (r.marker ? '<td colspan="5"><b>' + esc(r.ep.toUpperCase() === 'EOS' ? 'End of shift' : 'Break') + '</b></td>' :
+      '<td class="mono ellip" title="' + esc(r.ep) + '">' + esc(r.ep) + (r.dup ? ' <span class="tag bad">duplicate</span>' : '') + '</td><td class="ellip" title="' + esc(r.task) + '">' + esc(r.task) + '</td><td><span class="tag">' + esc(r.type || '—') + '</span></td><td class="small">' + esc(r.shift) + '</td><td class="num">' + (r.labels == null ? '' : fmt(r.labels)) + '</td>') +
+    '<td class="num">' + esc(r.dur) + '</td><td class="ellip small" title="' + esc(r.notes) + '">' + esc(r.notes) + '</td><td style="white-space:nowrap">' +
+    (r.marker ? '' : '<button type="button" class="btn sm" data-medit="' + r.row + '">Edit</button> ') + (r.row === lastRow ? '<button type="button" class="btn sm danger" data-mdel="' + r.row + '">Remove</button>' : '') + '</td></tr>';
+  const order = Object.keys(byDay).sort().reverse();
+  $('mRows').innerHTML = rows.length ? '<tr><th>Time</th><th>Episode ID</th><th>Task</th><th>Type</th><th>Shift</th><th class="num">Labels</th><th class="num">Duration</th><th>Notes</th><th></th></tr>' +
+    order.map(d => dayHead(d) + byDay[d].map(line).join('')).join('') +
+    (rows.length > LIMIT ? '<tr><td colspan="9" class="muted small">Showing the newest ' + LIMIT + ' of ' + rows.length + ' entries. Pick a shorter range to see the rest.</td></tr>' : '')
+    : '<tr><td class="empty">' + (single && f === D.today ? 'Nothing posted today yet. Paste an Episode ID above and press Post.' : single ? 'No entries on this day.' : 'No entries in this range.') + '</td></tr>';
+  mFetchTimes(shown);
+}
+/** The Date column shows only the day; read the stamped time for the rows on screen. */
+async function mFetchTimes(rows) {
+  const miss = rows.filter(r => r.t == null && M.times[r.row] === undefined); if (!miss.length || M.fetching) return;
+  const r1 = Math.min(...miss.map(r => r.row)), r2 = Math.max(...miss.map(r => r.row)), l = M.ldap; M.fetching = true;
+  try {
+    const p = await gs('get_spreadsheet', { spreadsheetId: SID(), includeGridData: true, ranges: [q(l) + '!D' + r1 + ':D' + r2], fields: ['sheets.data.rowData.values.effectiveValue'] });
+    const rd = (((((p.sheets || [])[0] || {}).data || [])[0] || {}).rowData) || [];
+    for (let i = 0; i <= r2 - r1; i++) { const v = (((rd[i] || {}).values || [])[0] || {}).effectiveValue; M.times[r1 + i] = v && typeof v.numberValue === 'number' ? v.numberValue % 1 : -1; }
+  } catch (e) { miss.forEach(r => M.times[r.row] = -1); }
+  M.fetching = false; if (M.ldap === l) renderMine();
+}
+function mLock(on) { mBusy = on; ['mPost', 'mBreak', 'mEos', 'mCancel'].forEach(id => $(id).disabled = on); }
+/** Appends rows after the last filled row of the member's tab, one write. Values for D, E and I stay null (formulas). */
+async function mAppend(vals, label) {
+  if (mBusy) return false; mLock(true); status('busy', 'Posting to your tab…');
+  const l = M.ldap;
+  try {
+    let row = M.next;
+    const tail = await getValues(q(l) + '!A' + row + ':A' + (row + 300));
+    let lastIdx = -1; tail.forEach((r, i) => { if (String(r[0] || '').trim()) lastIdx = i; });
+    row += lastIdx + 1;
+    const f = await formulaCells(l, row, 3, row + vals.length - 1, 3);
+    if (f.size < vals.length) throw { message: 'Row ' + row + ' onward of your tab has no Date formula. Copy the formulas down from the row above in the sheet, then post again.' };
+    await safeWrite(l, row, 0, vals.map(v => { const x = v.slice(); while (x.length < 8) x.push(null); return x; }));
+    if (lastIdx > -1) { M = null; await loadMine(); }
+    else {
+      const back = await getValues(q(l) + '!A' + row + ':I' + (row + vals.length - 1));
+      back.forEach((r, i) => { const rec = mRec(r, row + i); if (rec) M.rows.push(rec); });
+      M.next = row + vals.length;
+    }
+    const nd = (M.rows[M.rows.length - 1] || {}).d || D.today, [rf, rt] = mRange(); if (nd < rf || nd > rt) { mFrom.value = mTo.value = nd; }
+    renderMine(); await mRefreshMain(nd);
+    status('ok', 'Posted ' + nowT() + ' · ' + SHEETS[sheetKey].label); toast(label);
+    return true;
+  } catch (e) { status('err', 'Not posted'); toast('Not posted — ' + errText(e)); return false; }
+  finally { mLock(false); }
+}
+/** Re-reads this member's Main Tracker row for the day so its formula counts show the new entries. */
+async function mRefreshMain(d) {
+  const day = D.days[d], rec = day && day.rows.find(r => r.ldap === M.ldap); if (!rec) return;
+  try { const r = (await getValues(q(MT) + '!A' + rec.row + ':AF' + rec.row))[0] || []; day.rows[day.rows.indexOf(rec)] = dayRec(r, rec.row); renderAttendance(); renderMine(); } catch (e) {}
+}
+function mFormVals() {
+  const lab = $('mLabels').value.trim(), labels = lab === '' ? '' : Math.round(+lab);
+  if (lab !== '' && (!isFinite(labels) || labels < 0)) { toast('Labels count must be 0 or more'); return null; }
+  const v = { task: $('mTask').value.trim(), type: $('mType').value, shift: $('mShift').value, notes: $('mNotes').value.trim(), labels };
+  if (!v.type || !v.shift) { toast('Pick the type and shift'); return null; }
+  return v;
+}
+$('mPost').onclick = async () => {
+  if (!M) return;
+  if (mEdit) return mSaveEdit();
+  const eps = [...new Set($('mEp').value.split(/[\s,]+/).map(s => s.trim()).filter(Boolean))];
+  if (!eps.length) return toast('Paste at least one Episode ID');
+  if (eps.some(isMarker)) return toast('Use the Log break / End of shift buttons for those');
+  const v = mFormVals(); if (!v) return;
+  if (!v.task) return toast('Enter the task name');
+  const dups = eps.map(e => M.rows.find(r => r.ep === e)).filter(Boolean);
+  if (dups.length) return toast('Already in your tab: ' + dups.map(r => r.ep.slice(-12) + ' (row ' + r.row + ')').join(', '));
+  const ok = await mAppend(eps.map(ep => [ep, v.task, v.labels, null, null, v.shift, v.type, v.notes]), eps.length === 1 ? 'Posted 1 episode' : 'Posted ' + eps.length + ' episodes in one save');
+  if (ok) { $('mEp').value = ''; $('mNotes').value = ''; $('mLabels').value = ''; $('mEp').focus(); }
+};
+$('mBreak').onclick = () => { if (!M) return; const last = M.rows[M.rows.length - 1]; if (last && /^break$/i.test(last.ep)) return toast('Your last entry is already a break'); mAppend([['BREAK']], 'Break logged'); };
+$('mEos').onclick = e => { if (!M) return; arm(e.currentTarget, 'Click again to end shift', () => { const last = M.rows[M.rows.length - 1]; if (last && /^eos$/i.test(last.ep)) return toast('Your last entry is already EOS'); mAppend([['EOS']], 'End of shift logged'); }); };
+$('mRows').onclick = e => {
+  const ed = e.target.closest('[data-medit]'), del = e.target.closest('[data-mdel]');
+  if (ed) mOpenEdit(+ed.dataset.medit);
+  if (del) arm(del, 'Click again', () => mRemove(+del.dataset.mdel));
+};
+function mOpenEdit(row) {
+  const r = M.rows.find(x => x.row === row); if (!r) return;
+  mEdit = r;
+  $('mFormTitle').textContent = 'Edit entry (row ' + row + ' of your tab)'; $('mFormHint').textContent = 'The stamped time stays the same.';
+  $('mEpHint').hidden = true; $('mEp').rows = 1; $('mEp').value = r.ep; $('mTask').value = r.task;
+  setSel($('mType'), M.opts.type, r.type); setSel($('mShift'), M.opts.shift, r.shift);
+  $('mLabels').value = r.labels == null ? '' : r.labels; $('mNotes').value = r.notes;
+  $('mPost').textContent = 'Save changes'; $('mCancel').hidden = false; $('mBreak').hidden = $('mEos').hidden = true;
+  renderMine(); $('mForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function mCancelEdit() {
+  const was = !!mEdit; mEdit = null;
+  $('mFormTitle').textContent = 'Post work'; $('mFormHint').textContent = 'Added to the end of your tab. The sheet stamps the time, and Main Tracker counts it.';
+  $('mEpHint').hidden = false; $('mEp').rows = 3; $('mPost').textContent = 'Post'; $('mCancel').hidden = true; $('mBreak').hidden = $('mEos').hidden = false;
+  if (was) { $('mEp').value = ''; $('mNotes').value = ''; $('mLabels').value = ''; fillMineForm(true); renderMine(); }
+}
+$('mCancel').onclick = mCancelEdit;
+async function mSaveEdit() {
+  const r = mEdit, ep = $('mEp').value.trim(), v = mFormVals(); if (!v) return;
+  if (!ep || /\s/.test(ep)) return toast('Enter one Episode ID');
+  const dup = ep !== r.ep && M.rows.find(x => x.ep === ep); if (dup) return toast('That Episode ID is already in row ' + dup.row);
+  if (mBusy) return; mLock(true); status('busy', 'Saving…');
+  try {
+    const cur = (await getValues(q(M.ldap) + '!A' + r.row + ':A' + r.row))[0] || [];
+    if (String(cur[0] || '').trim() !== r.ep) throw { message: 'Row ' + r.row + ' changed in the sheet since it was loaded. Press Reload.' };
+    await safeWrite(M.ldap, r.row, 0, [[ep, v.task, v.labels, null, null, v.shift, v.type, v.notes]]);
+    const back = (await getValues(q(M.ldap) + '!A' + r.row + ':I' + r.row))[0] || [];
+    const rec = mRec(back, r.row), ix = M.rows.findIndex(x => x.row === r.row); if (ix > -1) M.rows[ix] = rec;
+    mCancelEdit(); renderMine(); await mRefreshMain(rec.d);
+    status('ok', 'Saved ' + nowT()); toast('Entry updated');
+  } catch (e) { status('err', 'Not saved'); toast('Not saved — ' + errText(e)); }
+  finally { mLock(false); }
+}
+/** Only the latest entry can be removed (no gaps in the tab). Formulas in D, E and I stay. */
+async function mRemove(row) {
+  const r = M.rows[M.rows.length - 1]; if (!r || r.row !== row || mBusy) return;
+  mLock(true); status('busy', 'Removing…');
+  try {
+    const cur = await getValues(q(M.ldap) + '!A' + row + ':A' + (row + 20));
+    if (String((cur[0] || [])[0] || '').trim() !== r.ep || cur.slice(1).some(x => String(x[0] || '').trim())) throw { message: 'Your tab changed since it was loaded. Press Reload.' };
+    await safeWrite(M.ldap, row, 0, [['', '', '', null, null, '', '', '']]);
+    M.rows.pop(); M.next = row; delete M.times[row];
+    if (mEdit && mEdit.row === row) mCancelEdit();
+    renderMine(); await mRefreshMain(r.d);
+    status('ok', 'Removed ' + nowT()); toast('Removed ' + (r.marker ? r.ep : r.ep.slice(-12)));
+  } catch (e) { status('err', 'Not removed'); toast('Not removed — ' + errText(e)); }
+  finally { mLock(false); }
+}
+
+/* ===== data checks (read only) ===== */
+function renderChecks() {
+  if (!D) return;
+  const items = [], add = (sev, group, where, what) => items.push({ sev, group, where, what });
+  D.refRows.forEach(x => add('error', 'Main Tracker rows whose LDAP shows #REF!', 'Main Tracker row ' + x.row, longDate(x.date)));
+  const team = new Set(D.members.map(m => m.ldap));
+  D.order.forEach(d => { if (d > D.today) return; const day = D.days[d];
+    if (d >= addDays(D.today, -30)) team.forEach(l => { if (!day.rows.some(r => r.ldap === l)) add('warn', 'Team member missing from a day block (last 30 days)', longDate(d), nameOf(l)); });
+    day.rows.forEach(r => {
+      if (!team.has(r.ldap)) add('warn', 'Day row LDAP not in the Main Tracker team list', 'Main Tracker row ' + r.row, r.ldap);
+      if (!r.present && (r.dqa > 0 || r.revs > 0)) add('warn', 'Logged work but no Time In for that day', 'Main Tracker row ' + r.row, nameOf(r.ldap) + ' · ' + longDate(d) + ' · ' + r.dqa + ' data QA');
+      if (r.present && d < D.today && r.dqa === 0 && r.revs === 0 && r.labels === 0) add('info', 'Present but nothing logged', 'Main Tracker row ' + r.row, nameOf(r.ldap) + ' · ' + longDate(d));
+      if (r.present && r.ded > r.core && r.core > 0) add('warn', 'Deductive hours exceed the shift', 'Main Tracker row ' + r.row, nameOf(r.ldap) + ' · ' + fmt(r.ded, 2) + ' h');
+    }); });
+  if (Q) { const seen = {};
+    Q.rows.forEach(x => {
+      if (x.sam && Math.abs(x.ok + x.err - x.sam) > 0.001) add('warn', 'Reviewers Sheet: Perfect + Errors ≠ # Data QA', 'Reviewers Sheet row ' + x.row, x.ep);
+      if (x.reviewer && x.reviewer.toLowerCase() === x.ldap) add('warn', 'Reviewers Sheet: self-review', 'Reviewers Sheet row ' + x.row, x.ldap);
+      if (!team.has(x.ldap)) add('info', 'Reviewers Sheet: LDAP not in the team', 'Reviewers Sheet row ' + x.row, x.ldap);
+      if (!x.dRev && !x.dEval) add('warn', 'Reviewers Sheet: missing or unreadable date', 'Reviewers Sheet row ' + x.row, x.ep);
+      const k = x.ep + '|' + revDay(x);   // same episode on the same day = mistake; on another day = a re-review (fine)
+      if (seen[k]) add('warn', 'Reviewers Sheet: episode QA-ed twice on the same day', 'Reviewers Sheet row ' + x.row, x.ep + ' (also row ' + seen[k] + ')');
+      else { if (seen[x.ep]) add('info', 'Reviewers Sheet: episode re-reviewed on another day', 'Reviewers Sheet row ' + x.row, x.ep + ' (first in row ' + seen[x.ep] + ')'); seen[k] = x.row; }
+      if (!seen[x.ep]) seen[x.ep] = x.row;
+    }); }
+  const groups = {}; items.forEach(it => (groups[it.sev + '|' + it.group] = groups[it.sev + '|' + it.group] || []).push(it));
+  const keys = Object.keys(groups).sort((a, b) => ['error', 'warn', 'info'].indexOf(a.split('|')[0]) - ['error', 'warn', 'info'].indexOf(b.split('|')[0]));
+  const n = items.filter(i => i.sev !== 'info').length; $('checkCount').hidden = !n; $('checkCount').textContent = n > 999 ? '999+' : n;
+  $('checkList').innerHTML = keys.length ? keys.map(k => { const [sev, g] = k.split('|'), list = groups[k];
+    return '<details class="grp"><summary><span class="sev ' + sev + '">' + sev + '</span><b>' + esc(g) + '</b><span class="muted">' + list.length + '</span></summary><div class="tablewrap"><table>' +
+      list.slice(0, 200).map(x => '<tr><td>' + esc(x.where) + '</td><td class="muted">' + esc(x.what) + '</td></tr>').join('') + (list.length > 200 ? '<tr><td colspan="2" class="muted">… and ' + (list.length - 200) + ' more</td></tr>' : '') + '</table></div></details>'; }).join('')
+    : '<div class="card empty">No problems found.</div>';
+}
+
+/* ===== manual review bucket =====
+ * Episodes come from members' tabs (read only). Picks are shared through the artifact's db:
+ * one document per pick day in "bucket-<test|live>", {day, items: {<episode id>: {...}}}.
+ * Every change runs under a short lease on that day's document, so two pickers never take
+ * the same episode on the same day. */
+let RDB = null, rbUnsub = null, rbSheet = null, rbReady = false, rbErr = '', rbBusy = false;
+const RBD = {}, RIDX = {}, rbSel = new Set(), rbHolder = 'v' + Math.random().toString(36).slice(2);
+const rbCol = () => 'bucket-' + sheetKey;
+const roleOf = l => ((D && D.roster[l]) || {}).role || '';
+const canPick = l => !!l && /team lead|reviewer/i.test(roleOf(l));
+const rbPeople = () => D ? D.members.filter(m => !/team lead|reviewer/i.test(roleOf(m.ldap))) : [];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function rbSubscribe() {
+  if (!RDB || rbSheet === sheetKey) return;
+  if (rbUnsub) rbUnsub();
+  rbSheet = sheetKey; rbReady = false; rbErr = ''; Object.keys(RBD).forEach(k => delete RBD[k]);
+  const timer = setTimeout(() => { if (!rbReady) { rbErr = 'The shared bucket can’t be reached yet, so what is shown may be out of date.'; renderBucket(); } }, 10000);
+  try {
+    rbUnsub = RDB.collection(rbCol()).orderBy('day', 'desc').limit(120).onSnapshot(snap => {
+      Object.keys(RBD).forEach(k => delete RBD[k]);
+      snap.docs.forEach(d => { const v = d.data(); if (v) RBD[d.id] = v; });
+      if (!snap.metadata.fromCache) { rbReady = true; rbErr = ''; clearTimeout(timer); }
+      renderBucket();
+    }, e => { clearTimeout(timer); rbErr = 'The shared bucket stopped updating (' + (e && e.code) + '). Press Reload.'; rbSheet = null; renderBucket(); });
+  } catch (e) { clearTimeout(timer); rbErr = 'The shared bucket could not be opened.'; renderBucket(); }
+}
+function initBucket() {
+  if (!D) return;
+  if (!$('rbDate').value) $('rbDate').value = D.today;
+  if (!$('rbDay').value) $('rbDay').value = D.today;
+  const people = rbPeople();
+  if (!rbSel.size) people.forEach(m => rbSel.add(m.ldap));
+  $('rbMembers').innerHTML = people.map(m => '<label class="chip"><input type="checkbox" value="' + esc(m.ldap) + '"' + (rbSel.has(m.ldap) ? ' checked' : '') + (D.tabs.has(m.ldap) ? '' : ' disabled') + '> ' + esc(m.name) + (D.tabs.has(m.ldap) ? '' : ' (no tab)') + '</label>').join('');
+  const by = $('rbBy'), cur = by.value;
+  by.innerHTML = '<option value="">Everyone</option>' + D.members.filter(m => canPick(m.ldap)).map(m => '<option value="' + esc(m.ldap) + '">' + esc(m.name) + '</option>').join('');
+  by.value = cur;
+  rbSubscribe(); renderBucket();
+}
+$('rbMembers').addEventListener('change', e => { const v = e.target.value; if (!v) return; if (e.target.checked) rbSel.add(v); else rbSel.delete(v); });
+$('rbAll').onclick = () => { rbPeople().forEach(m => rbSel.add(m.ldap)); initBucket(); };
+$('rbNone').onclick = () => { rbSel.clear(); $('rbMembers').querySelectorAll('input').forEach(i => i.checked = false); };
+document.querySelectorAll('[data-rbday]').forEach(b => b.onclick = () => { const n = +b.dataset.rbday; $('rbDay').value = n ? addDays($('rbDay').value || D.today, n) : D.today; renderBucket(); });
+$('rbDay').onchange = renderBucket; $('rbBy').onchange = renderBucket;
+/** Every item taken on any loaded day, by episode. */
+function rbTakenAll() { const out = {}; Object.values(RBD).forEach(doc => Object.values(doc.items || {}).forEach(it => (out[it.ep] = out[it.ep] || []).push(it))); return out; }
+const rbReviewed = it => Q ? Q.rows.filter(x => x.ep === it.ep && revDay(x) && revDay(x) >= it.day).sort((a, b) => b.row - a.row)[0] : null;
+function renderBucket() {
+  if (!D || !$('rbRows')) return;
+  const me = meLdap, ok = canPick(me);
+  $('rbWho').textContent = me ? 'Picking as ' + nameOf(me) + (roleOf(me) ? ' (' + roleOf(me) + ')' : '') : '';
+  let ban = '';
+  if (!RDB) ban += '<div class="banner err">The shared review bucket isn’t available in this view. Open the tracker on claude.ai or in the Claude app, signed in as a member it is shared with.</div>';
+  else if (rbErr) ban += '<div class="banner warn">' + esc(rbErr) + '</div>';
+  if (!ok) ban += '<div class="banner info">Only the Team Lead and the reviewer can pick, review or release episodes here.' + (me ? esc(nameOf(me)) + ' is listed as ' + esc(roleOf(me) || 'no role') + ' in Team Details.' : 'Choose your name on the My work tab first.') + '</div>';
+  $('rbBanner').innerHTML = ban;
+  $('rbPick').disabled = !ok || !RDB || rbBusy;
+  const day = $('rbDay').value || D.today, doc = RBD[day], by = $('rbBy').value;
+  const items = Object.values((doc && doc.items) || {}).filter(it => !by || it.by === by);
+  const done = items.filter(rbReviewed);
+  $('rbKpis').innerHTML = [[items.length, 'Taken on ' + longDate(day)], [done.length, 'Reviewed'], [items.length - done.length, 'Still to review'],
+    [new Set(items.map(it => it.ldap)).size, 'Members covered']].map(([v, l]) => '<div class="kpi"><b>' + v + '</b><span>' + l + '</span></div>').join('');
+  if (!items.length) { $('rbRows').innerHTML = '<tr><td class="empty">' + (rbReady || !RDB ? 'Nothing taken on ' + esc(longDate(day)) + (by ? ' by ' + esc(nameOf(by)) : '') + '.' : 'Loading the review bucket…') + '</td></tr>'; return; }
+  // keep what someone is typing: re-render the grid only when focus is not inside it
+  if ($('rbRows').contains(document.activeElement)) { rbStale = true; rbSaveState(); return; }
+  rbStale = false;
+  const S = Q && Q.setup, cats = S ? S.cats : [];
+  const order = D.members.map(m => m.ldap), groups = {};
+  items.forEach(it => (groups[it.ldap] = groups[it.ldap] || []).push(it));
+  const keys = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 999 * (order.indexOf(a) < 0)) - (order.indexOf(b) + 999 * (order.indexOf(b) < 0)));
+  const cols = 6 + cats.length + (S && S.notesCol > -1 ? 1 : 0);
+  const catCell = (it, k) => { const c = cats[k], d = rbDraftOf(it.ep), v = d.cats[k] || S.perfect, bad = isPerfect(v) ? '' : ' class="bad"';
+    const o = c.options.length ? (c.options.includes(v) ? c.options : [v].concat(c.options)) : [S.perfect, v].filter((x, i, a) => a.indexOf(x) === i);
+    return '<td><select data-rbep="' + esc(it.ep) + '" data-rbk="' + k + '"' + bad + (ok ? '' : ' disabled') + '>' + o.map(x => '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></td>'; };
+  $('rbRows').innerHTML = '<tr><th>Done</th><th>Episode ID</th><th>Task</th><th>Taken by</th>' + cats.map(c => '<th>' + esc(c.name) + '</th>').join('') + (S && S.notesCol > -1 ? '<th>' + esc(S.notesName || 'Notes') + '</th>' : '') + '<th>Status</th><th></th></tr>' + keys.map(l => {
+    const list = groups[l].sort((a, b) => a.row - b.row), n = list.filter(rbReviewed).length;
+    return '<tr class="rbhead"><td colspan="' + cols + '">' + esc(nameOf(l)) + ' <span class="muted small">' + list.length + ' taken · ' + n + ' reviewed</span></td></tr>' + list.map(it => {
+      const rv = rbReviewed(it), d = rbDraftOf(it.ep);
+      const info = '<td class="mono ellip" title="' + esc(it.ep) + ' · tab row ' + esc(it.row) + ' · work date ' + esc(it.workDate) + '">' + esc(it.ep) + '</td><td class="ellip" title="' + esc(it.task) + '">' + esc(it.task) + '</td>' +
+        '<td class="small">' + esc(nameOf(it.by).split(' ')[0]) + ' <span class="muted">' + (it.at ? new Date(it.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '') + '</span></td>';
+      if (rv) return '<tr><td></td>' + info + cats.map((c, k) => '<td>' + (isPerfect(rv.cats[k]) ? '<span class="tag ok">✓</span>' : '<span class="tag off">' + esc(rv.cats[k] || '—') + '</span>') + '</td>').join('') +
+        (S.notesCol > -1 ? '<td class="ellip small" title="' + esc(rv.notes) + '">' + esc(rv.notes) + '</td>' : '') +
+        '<td><span class="tag ok">Reviewed · row ' + rv.row + ' · ' + fmt(rv.ok) + ' / ' + fmt(rv.sam) + '</span></td><td></td></tr>';
+      if (!S) return '<tr><td></td>' + info + '<td colspan="' + (cols - 4) + '" class="muted small">Loading the Reviewers Sheet…</td></tr>';
+      return '<tr' + (d.on ? ' class="ready"' : '') + '><td><input type="checkbox" aria-label="Done reviewing" data-rbon="' + esc(it.ep) + '"' + (d.on ? ' checked' : '') + (ok ? '' : ' disabled') + '></td>' + info +
+        cats.map((c, k) => catCell(it, k)).join('') +
+        (S.notesCol > -1 ? '<td><input type="text" data-rbep="' + esc(it.ep) + '" data-rbk="notes" value="' + esc(d.notes) + '" placeholder="mistake notes"' + (ok ? '' : ' disabled') + '></td>' : '') +
+        '<td><span class="tag off">To review</span></td><td style="white-space:nowrap">' + (ok ? '<button type="button" class="btn sm danger" data-rbrel="' + esc(it.ep) + '">Release</button>' : '') + '</td></tr>';
+    }).join('');
+  }).join('');
+  rbSaveState();
+}
+/* ----- reviewing inside the bucket: drafts live in this browser until saved to the Reviewers Sheet ----- */
+const rbDrafts = {}; let rbStale = false, rbSaving = false;
+function rbDraftOf(ep) { if (!rbDrafts[ep]) rbDrafts[ep] = { cats: Q ? Q.setup.cats.map(() => Q.setup.perfect) : [], notes: '', on: false }; const d = rbDrafts[ep]; if (Q && d.cats.length !== Q.setup.cats.length) d.cats = Q.setup.cats.map(() => Q.setup.perfect); return d; }
+/** Ticked, unreviewed rows of the day shown. */
+function rbReadyItems() { const day = $('rbDay').value || (D && D.today), doc = RBD[day]; return Object.values((doc && doc.items) || {}).filter(it => rbDrafts[it.ep] && rbDrafts[it.ep].on && !rbReviewed(it)); }
+function rbSaveState() {
+  const n = rbReadyItems().length, ok = canPick(meLdap) && !!Q;
+  $('rbSave').disabled = !ok || !n || rbSaving; $('rbSave').textContent = n ? 'Save ' + n + ' review' + (n === 1 ? '' : 's') + ' to Reviewers Sheet' : 'Save reviews';
+  if (Q && !$('rbShift').options.length) { let last = {}; try { last = JSON.parse(localStorage.getItem('t39qaLast') || '{}'); } catch (e) {}
+    const sh = Q.setup.shifts.length ? Q.setup.shifts : ['core hours', 'extra hours']; $('rbShift').innerHTML = sh.map(s => '<option' + (s === last.shift ? ' selected' : '') + '>' + esc(s) + '</option>').join(''); }
+  if (D && !$('rbRev').value) $('rbRev').value = D.today;
+}
+$('rbRows').addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.rbon) { rbDraftOf(el.dataset.rbon).on = el.checked; el.closest('tr').classList.toggle('ready', el.checked); rbSaveState(); return; }
+  const ep = el.dataset.rbep, k = el.dataset.rbk; if (!ep || k == null) return;
+  const d = rbDraftOf(ep);
+  if (k === 'notes') d.notes = el.value.trim(); else { d.cats[+k] = el.value; el.classList.toggle('bad', !isPerfect(el.value)); }
+  // editing a row means you're reviewing it: tick it so it is saved
+  if (!d.on) { d.on = true; const cb = el.closest('tr').querySelector('[data-rbon]'); if (cb) cb.checked = true; el.closest('tr').classList.add('ready'); }
+  rbSaveState();
+});
+$('rbRows').addEventListener('focusout', () => setTimeout(() => { if (rbStale && !$('rbRows').contains(document.activeElement)) renderBucket(); }, 0));
+$('rbSave').onclick = async () => {
+  if (!canPick(meLdap) || !Q || rbSaving) return;
+  const list = rbReadyItems(); if (!list.length) return;
+  const dRev = $('rbRev').value || D.today, shift = $('rbShift').value;
+  rbSaving = true; rbSaveState(); status('busy', 'Saving ' + list.length + ' reviews…');
+  try {
+    const r = await appendReviews(list.map(it => { const d = rbDraftOf(it.ep); return { ldap: it.ldap, ep: it.ep, task: it.task, dEval: it.workDate || dRev, dRev, reviewer: meLdap, shift, cats: d.cats.slice(), notes: d.notes }; }));
+    r.saved.forEach(v => delete rbDrafts[v.ep]);
+    try { localStorage.setItem('t39qaLast', JSON.stringify({ reviewer: meLdap, shift })); } catch (e) {}
+    status('ok', 'Saved ' + nowT()); toast(reviewSavedText(r));
+  } catch (e) { status('err', 'Not saved'); toast('Not saved — ' + errText(e)); }
+  finally { rbSaving = false; renderBucket(); }
+};
+/** Posting date of every row in a member's tab (index = row − 1), read from column D in 2,000-row pieces; later calls re-read only the end. */
+async function rbIndex(l) {
+  const k = sheetKey + '|' + l, old = RIDX[k];
+  const start = old ? Math.max(2, old.length - 20) : 1, dates = old ? old.slice(0, start - 1) : [];
+  for (let s = start; s < 40000; s += 2000) {
+    const part = await getPiece(q(l) + '!D' + s + ':D' + (s + 1999));
+    if (!part.length) break;
+    part.forEach((r, i) => { dates[s - 1 + i] = parseDay((r || [])[0]); });
+    if (part.length < 2000) break;
+  }
+  for (let i = 0; i < dates.length; i++) if (dates[i] == null) dates[i] = '';
+  while (dates.length && !dates[dates.length - 1]) dates.pop();
+  RIDX[k] = dates; return dates;
+}
+/** A member's candidate entries for the work date: their own work of the chosen types, never markers. */
+async function rbCandidates(l, date, types) {
+  const dates = await rbIndex(l), rows = [];
+  dates.forEach((d, i) => { if (i > 0 && d === date) rows.push(i + 1); });
+  if (!rows.length) return [];
+  const out = [], seen = new Set();
+  for (let a = 0; a < rows.length;) {   // read the matching rows in runs of at most 500
+    let b = a; while (b + 1 < rows.length && rows[b + 1] - rows[a] < 500) b++;
+    const r1 = rows[a], r2 = rows[b], part = await getValues(q(l) + '!A' + r1 + ':I' + r2);
+    part.forEach((r, i) => {
+      const rec = mRec(r, r1 + i); if (!rec || rec.d !== date || rec.marker || /^end of shift$/i.test(rec.ep)) return;
+      if (!types.includes(String(rec.type).toUpperCase()) || seen.has(rec.ep)) return;
+      seen.add(rec.ep); out.push({ ldap: l, ep: rec.ep, task: rec.task, row: rec.row, type: rec.type, workDate: date });
+    });
+    a = b + 1;
+  }
+  return out;
+}
+function rbShuffle(a) { const r = new Uint32Array(a.length); crypto.getRandomValues(r); for (let i = a.length - 1; i > 0; i--) { const j = r[i] % (i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+/** Read-modify-write of one day's bucket under a lease; fn(items) changes items in place and returns a result. */
+async function rbWithDay(day, fn) {
+  const ref = RDB.collection(rbCol()).doc(day);
+  for (let tries = 0; tries < 8; tries++) {
+    const lease = await ref.acquire({ holder: rbHolder, ttlMs: 10000 });
+    if (!lease.acquired) { await sleep(1200 + Math.random() * 1200); continue; }
+    const snap = await ref.get(), cur = snap.exists ? snap.data() : null;
+    const items = JSON.parse(JSON.stringify((cur && cur.items) || {}));
+    const res = fn(items);
+    if (res && res.changed) await ref.set({ day, sheet: sheetKey, items });
+    return res;
+  }
+  throw { message: 'Someone else is saving picks right now. Try again in a moment.' };
+}
+$('rbPick').onclick = async () => {
+  if (!canPick(meLdap) || !RDB || rbBusy) return;
+  if (!Q) return toast('Reviews are still loading');
+  const date = $('rbDate').value, n = Math.round(+$('rbN').value), again = $('rbAgain').checked;
+  const types = [...$('rbTypes').querySelectorAll('input:checked')].map(i => i.value);
+  const people = rbPeople().filter(m => rbSel.has(m.ldap) && D.tabs.has(m.ldap));
+  if (!date) return toast('Pick a work date'); if (!(n >= 1 && n <= 50)) return toast('Episodes per member must be 1–50');
+  if (!types.length) return toast('Tick at least one type'); if (!people.length) return toast('Tick at least one member');
+  rbBusy = true; renderBucket(); status('busy', 'Reading members’ tabs…');
+  const cands = {}; let doneN = 0;
+  try {
+    const queue = people.slice();
+    const worker = async () => { while (queue.length) { const m = queue.shift(); cands[m.ldap] = await rbCandidates(m.ldap, date, types); $('rbProgress').textContent = 'Read ' + (++doneN) + ' of ' + people.length + ' tabs…'; } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    $('rbProgress').textContent = 'Saving picks…';
+    const reviewed = new Set(Q.rows.map(x => x.ep)), today = D.today;
+    const res = await rbWithDay(today, items => {
+      const earlier = rbTakenAll(), picked = [], short = [];
+      people.forEach(m => {
+        const pool = rbShuffle((cands[m.ldap] || []).filter(c => !items[c.ep] && (again || (!reviewed.has(c.ep) && !(earlier[c.ep] || []).some(it => it.day !== today)))));
+        const take = pool.slice(0, n);
+        take.forEach(c => { items[c.ep] = { ep: c.ep, ldap: c.ldap, task: c.task, row: c.row, type: c.type, workDate: c.workDate, day: today, by: meLdap, at: Date.now() }; picked.push(c); });
+        if (take.length < n) short.push(nameOf(m.ldap).split(' ')[0] + ' ' + take.length);
+      });
+      return { changed: picked.length > 0, picked, short };
+    });
+    $('rbDay').value = today; $('rbBy').value = '';
+    status('ok', 'Picked ' + nowT());
+    $('rbProgress').textContent = res.short.length ? 'Fewer available for: ' + res.short.join(', ') : '';
+    toast(res.picked.length ? 'Took ' + res.picked.length + ' episode' + (res.picked.length === 1 ? '' : 's') + ' from ' + longDate(date) : 'Nothing left to take for ' + longDate(date));
+  } catch (e) { status('err', 'Not picked'); $('rbProgress').textContent = ''; toast('Not picked — ' + errText(e)); }
+  finally { rbBusy = false; renderBucket(); }
+};
+$('rbRows').addEventListener('click', async e => {
+  const lg = e.target.closest('[data-rblog]'), rl = e.target.closest('[data-rbrel]'), day = $('rbDay').value || D.today, doc = RBD[day];
+  if (lg) { const it = doc && doc.items && doc.items[lg.dataset.rblog]; if (!it) return; qaOpenFor(it); return; }
+  if (rl) arm(rl, 'Click again to release', async () => {
+    if (!canPick(meLdap)) return; const ep = rl.dataset.rbrel;
+    try { const r = await rbWithDay(day, items => { const had = !!items[ep]; delete items[ep]; return { changed: had }; }); toast(r.changed ? 'Released back to the pool' : 'Already released'); }
+    catch (x) { toast('Not released — ' + errText(x)); }
+  });
+});
+$('rbCopy').onclick = async () => {
+  const day = $('rbDay').value || D.today, by = $('rbBy').value, doc = RBD[day];
+  const text = Object.values((doc && doc.items) || {}).filter(it => (!by || it.by === by) && !rbReviewed(it)).map(it => it.ep).join('\n');
+  if (!text) return toast('Nothing left to review');
+  try { await navigator.clipboard.writeText(text); toast('Copied ' + text.split('\n').length + ' Episode IDs'); } catch (x) { toast('Copy failed — select the IDs in the table'); }
+};
+/** Opens the QA review form filled in for a bucket episode. */
+function qaOpenFor(it) {
+  showTab('qa'); qaOpen(0);
+  $('fLdap').value = it.ldap; $('fEp').value = it.ep; $('fTask').value = it.task || '';
+  if (it.workDate) $('fEval').value = it.workDate; $('fRev').value = D.today;
+  if ($('fReviewer') && canPick(meLdap)) $('fReviewer').value = meLdap;
+  qaDupNote();
+}
+
+/* ===== Google sign-in help: the page reaches Google only through the viewer's claude.ai Google Sheets connector ===== */
+const CONNECT_URL = 'https://claude.ai/settings/connectors';
+function errBanner(e) {
+  const c = e && e.code, signIn = ['no_mcp', 'server_not_connected', 'selection_required', 'needs_reauth', 'not_in_manifest', 'approval_required', 'consent_required'].includes(c);
+  const steps = c === 'no_mcp'
+    ? '<ol class="small" style="margin:8px 0 0 18px;padding:0"><li>Open this tracker on claude.ai (or in the Claude app), signed in to a Claude account in the team’s organization.</li><li>Press <b>Connect Google</b> and add Google Sheets, signed in to a Google account that can edit the sheet.</li><li>Press <b>Allow for this page</b> if it was turned off, then reload this page.</li></ol>' : '';
+  return '<div class="banner err">' + esc(errText(e)) + steps + (signIn ? '<div class="row" style="margin-top:8px">' +
+    '<a class="btn sm primary" target="_blank" rel="noopener" href="' + CONNECT_URL + '">Connect Google</a>' +
+    '<button type="button" class="btn sm" data-perm>Allow for this page</button>' +
+    '<button type="button" class="btn sm" data-reload>Reload</button></div>' : '') + '</div>';
+}
+$('banner').addEventListener('click', async e => {
+  if (e.target.closest('[data-reload]')) { if (mcp) { Q = null; loadAll(); } else location.reload(); return; }
+  if (!e.target.closest('[data-perm]')) return;
+  const perms = window.claude && window.claude.use ? await window.claude.use('permissions') : null;
+  if (!perms) return toast('Open this page’s Permissions menu on claude.ai and allow Google Sheets');
+  try { await perms.manage(); toast('Reloading with your new settings…'); setTimeout(() => location.reload(), 600); }
+  catch (x) { toast('Open this page’s Permissions menu (top of the page) and allow Google Sheets'); }
+});
+
+/* ===== sheet picker, reload, boot ===== */
+function paintSheet() { $('sheetPick').value = sheetKey; const b = $('sheetBadge'); b.textContent = sheetKey === 'live' ? 'Live' : 'Test'; b.classList.toggle('live', sheetKey === 'live'); }
+$('sheetPick').onchange = e => { sheetKey = e.target.value === 'live' ? 'live' : 'test'; try { localStorage.setItem('t39sheet', sheetKey); } catch (x) {} paintSheet(); Q = null; M = null; loadAll(); };
+$('reloadBtn').onclick = () => { Q = null; loadAll(); };
+paintSheet();
+try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
+(async () => {
+  if (window.claude && window.claude.use) window.claude.use('db').then(db => { RDB = db; rbSubscribe(); renderBucket(); }).catch(() => renderBucket());
+  mcp = window.claude && window.claude.use ? await window.claude.use('mcp') : null;
+  if (!mcp) { status('err', 'Not connected'); $('banner').innerHTML = errBanner({ code: 'no_mcp' }); $('attList').innerHTML = '<div class="card empty">Open this tracker on claude.ai or in the Claude app with the Google Sheets connector added.</div>'; return; }
+  loadAll();
+  setInterval(() => { if (!document.hidden) { Q = null; loadAll(); } }, 30 * 60 * 1000);
+})();
+</script>
+
+<script>
+/* ===== Team 39 Tracker — standalone mode =====
+ * Loaded after the tracker's own script. Outside Claude there is no connector and no shared store, so this:
+ *   1. signs the person in with Google (Google Identity Services, access token only, nothing stored on a server);
+ *   2. gives the tracker a `mcp` object whose three calls (get_values, get_spreadsheet, update_values)
+ *      go straight to the Google Sheets API with that person's own token;
+ *   3. gives the tracker an `RDB` store (review bucket + save locks) kept in a separate "picks" Google Sheet,
+ *      tab "Store": one row per record — A key, B JSON body, C lease holder, D lease expiry (ms), E updated (ms).
+ * The tracker's own code is unchanged; it only sees these two objects.
+ */
+(() => {
+  const CFG = window.T39_CONFIG || {};
+  const API = 'https://sheets.googleapis.com/v4/spreadsheets/';
+  const SCOPES = 'https://www.googleapis.com/auth/spreadsheets openid email';
+  let token = null, tokenExp = 0, tokenClient = null, email = '', started = false;
+  const remembered = (() => { try { return localStorage.getItem('t39gEmail') || ''; } catch (e) { return ''; } })();
+
+  /* ----- Google Sheets API ----- */
+  const signedOut = msg => ({ code: 'signed_out', message: msg || 'Sign in with Google to continue.' });
+  async function api(method, url, body) {
+    if (!token || Date.now() > tokenExp - 20000) { askSignIn('Your Google sign-in has expired. Sign in again to keep going.'); throw signedOut('Your Google sign-in has expired. Press Sign in with Google.'); }
+    const r = await fetch(url, { method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const text = await r.text(); let j = null; try { j = text ? JSON.parse(text) : {}; } catch (e) { j = null; }
+    if (r.status === 401) { token = null; askSignIn('Your Google sign-in has expired. Sign in again to keep going.'); throw signedOut(); }
+    if (!r.ok) { const m = (j && j.error && j.error.message) || text || ('HTTP ' + r.status); throw { code: r.status === 403 || r.status === 404 ? 'forbidden' : 'tool_error', message: m }; }
+    if (!j) throw { code: 'tool_error', message: 'Unexpected reply from Google Sheets' };
+    return j;
+  }
+  const enc = encodeURIComponent;
+  async function sheets(tool, input) {
+    const id = enc(input.spreadsheetId);
+    if (tool === 'get_values') return api('GET', API + id + '/values/' + enc(input.range) + '?valueRenderOption=FORMATTED_VALUE');
+    if (tool === 'get_spreadsheet') {
+      const p = [];
+      if (input.includeGridData) p.push('includeGridData=true');
+      (input.ranges || []).forEach(r => p.push('ranges=' + enc(r)));
+      if (input.fields) p.push('fields=' + enc([].concat(input.fields).join(',')));
+      return api('GET', API + id + (p.length ? '?' + p.join('&') : ''));
+    }
+    // RAW: numbers stay numbers and text stays text (a note starting with "=" is never run as a formula); null cells are skipped.
+    if (tool === 'update_values') return api('PUT', API + id + '/values/' + enc(input.range) + '?valueInputOption=RAW', { range: input.range, majorDimension: 'ROWS', values: input.values });
+    if (tool === 'append_values') return api('POST', API + id + '/values/' + enc(input.range) + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { range: input.range, majorDimension: 'ROWS', values: input.values });
+    throw { code: 'tool_error', message: 'Unknown call ' + tool };
+  }
+  const shimMcp = { callTool: async (server, tool, input) => ({ payload: await sheets(tool, input) }) };
+
+  /* ----- shared store in the picks sheet (stands in for Claude's db: only what the tracker uses) ----- */
+  const STORE = 'Store';
+  const nap = ms => new Promise(r => setTimeout(r, ms));
+  async function storeRows() {
+    const p = await sheets('get_values', { spreadsheetId: CFG.bucketSheetId, range: STORE + '!A2:E5000' });
+    return (p.values || []).map((r, i) => ({ row: i + 2, key: String(r[0] || ''), body: String(r[1] || ''), holder: String(r[2] || ''), exp: +r[3] || 0 }));
+  }
+  const firstRow = (all, key) => all.filter(x => x.key === key).sort((a, b) => a.row - b.row)[0];
+  const parse = s => { if (!s) return null; try { return JSON.parse(s); } catch (e) { return null; } };
+  async function rowFor(key) {
+    let m = firstRow(await storeRows(), key); if (m) return m;
+    await sheets('append_values', { spreadsheetId: CFG.bucketSheetId, range: STORE + '!A1:E1', values: [[key, '', '', '0', String(Date.now())]] });
+    return firstRow(await storeRows(), key);   // if two people created it at once, the first row wins for both
+  }
+  const putCells = (range, values) => sheets('update_values', { spreadsheetId: CFG.bucketSheetId, range: STORE + '!' + range, values });
+  const subs = new Set();
+  function docRef(key) {
+    const id = key.slice(key.indexOf('/') + 1);
+    return {
+      id, path: key,
+      async get() { const m = firstRow(await storeRows(), key), body = m && parse(m.body); return { id, exists: !!body, data: () => body || undefined, metadata: { fromCache: false, hasPendingWrites: false } }; },
+      async set(data) { const m = await rowFor(key); await putCells('B' + m.row + ':E' + m.row, [[JSON.stringify(data), null, null, String(Date.now())]]); pollSoon(); },
+      // cooperative lease: claim C/D, wait, re-read; only the holder that still owns it afterwards proceeds
+      async acquire(o) {
+        const m = await rowFor(key), now = Date.now();
+        if (m.holder && m.holder !== o.holder && m.exp > now) return { acquired: false, expiresAt: new Date(m.exp).toISOString() };
+        const exp = now + Math.min(600000, Math.max(1000, o.ttlMs || 30000));
+        await putCells('C' + m.row + ':D' + m.row, [[o.holder, String(exp)]]);
+        await nap(800);
+        const again = firstRow(await storeRows(), key);
+        return again && again.holder === o.holder ? { acquired: true, holder: o.holder, expiresAt: new Date(exp).toISOString() } : { acquired: false, expiresAt: new Date((again && again.exp) || exp).toISOString() };
+      }
+    };
+  }
+  function collectionRef(name) {
+    const q = { field: null, dir: 'asc', n: 1000 };
+    const api2 = {
+      path: name,
+      doc: id => docRef(name + '/' + id),
+      orderBy(f, d) { q.field = f; q.dir = d || 'asc'; return api2; },
+      limit(n) { q.n = n; return api2; },
+      onSnapshot(next) {
+        const sub = { name, q: { ...q }, next };
+        subs.add(sub); pollSoon();
+        return () => subs.delete(sub);
+      }
+    };
+    return api2;
+  }
+  let pollTimer = null, polling = false;
+  function pollSoon() { clearTimeout(pollTimer); pollTimer = setTimeout(poll, 50); }
+  async function poll() {
+    clearTimeout(pollTimer);
+    if (polling || !subs.size || !token) { pollTimer = setTimeout(poll, 20000); return; }
+    polling = true;
+    try {
+      const all = await storeRows();
+      subs.forEach(sub => {
+        const seen = new Set(), docs = [];
+        all.sort((a, b) => a.row - b.row).forEach(r => {
+          if (!r.key.startsWith(sub.name + '/') || seen.has(r.key)) return; seen.add(r.key);
+          const body = parse(r.body); if (!body) return;
+          docs.push({ id: r.key.slice(sub.name.length + 1), exists: true, data: () => body, metadata: { fromCache: false, hasPendingWrites: false } });
+        });
+        if (sub.q.field) { const f = sub.q.field, s = sub.q.dir === 'desc' ? -1 : 1; docs.sort((a, b) => String(a.data()[f] || '').localeCompare(String(b.data()[f] || '')) * s); }
+        const list = docs.slice(0, sub.q.n);
+        sub.next({ docs: list, size: list.length, empty: !list.length, docChanges: () => [], metadata: { fromCache: false, hasPendingWrites: false } });
+      });
+    } catch (e) { /* signed out or offline: try again on the next round */ }
+    finally { polling = false; pollTimer = setTimeout(poll, document.hidden ? 60000 : 20000); }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollSoon(); });
+  const shimDb = { collection: collectionRef, doc: p => docRef(p) };
+
+  /* ----- wording for this mode ----- */
+  const baseErrText = errText;
+  errText = function (e) {
+    const c = e && e.code;
+    if (c === 'signed_out' || c === 'no_mcp') return 'Sign in with Google to use the tracker.';
+    if (c === 'forbidden') return 'Your Google account' + (email ? ' (' + email + ')' : '') + ' can’t open this sheet: ' + String(e.message || '').slice(0, 200) + ' Ask the Team Lead to share it with you as an editor.';
+    return baseErrText(e);
+  };
+  errBanner = function (e) {
+    return '<div class="banner err">' + esc(errText(e)) + '<div class="row" style="margin-top:8px"><button type="button" class="btn sm primary" data-gsignin>Sign in with Google</button><button type="button" class="btn sm" data-reload>Try again</button></div></div>';
+  };
+
+  /* ----- sign-in UI ----- */
+  const hdrLink = document.querySelector('a[href="https://claude.ai/settings/connectors"]');
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn sm'; btn.id = 'gBtn';
+  if (hdrLink) hdrLink.replaceWith(btn);
+  function paintBtn() { btn.textContent = token ? 'Sign out' + (email ? ' (' + email + ')' : '') : 'Sign in with Google'; btn.classList.toggle('primary', !token); }
+  btn.onclick = () => { if (token) signOut(); else signIn(); };
+  function askSignIn(why) {
+    paintBtn();
+    status('err', 'Signed out');
+    $('banner').innerHTML = '<div class="banner info"><b>' + esc(why || 'Sign in with your Google account to use the Team 39 Tracker.') + '</b>' +
+      '<div class="small" style="margin-top:4px">Use the Google account that can edit the Team 39 sheet. Nothing is stored except in Google Sheets.</div>' +
+      '<div class="row" style="margin-top:8px"><button type="button" class="btn sm primary" data-gsignin>Sign in with Google' + (remembered ? ' as ' + esc(remembered) : '') + '</button></div></div>';
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-gsignin]')) { e.preventDefault(); e.stopPropagation(); signIn(); }
+    else if (e.target.closest('#banner [data-reload]')) { e.preventDefault(); e.stopPropagation(); if (token) { Q = null; loadAll(); } else signIn(); }
+  }, true);
+  function signIn() {
+    if (!CFG.clientId) { $('banner').innerHTML = '<div class="banner err">Setup isn’t finished: add the Google client ID to config.js (see the README).</div>'; return; }
+    if (!window.google || !google.accounts || !google.accounts.oauth2) { toast('Google sign-in is still loading — try again in a moment'); return; }
+    if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CFG.clientId, scope: SCOPES, callback: onToken, error_callback: err => toast('Sign-in didn’t finish: ' + ((err && err.type) || 'closed')) });
+    tokenClient.requestAccessToken({ prompt: token || remembered ? '' : 'consent', login_hint: remembered || undefined });
+  }
+  function signOut() {
+    if (token && window.google && google.accounts) google.accounts.oauth2.revoke(token, () => {});
+    token = null; email = ''; try { localStorage.removeItem('t39gEmail'); } catch (e) {}
+    paintBtn(); askSignIn('Signed out.');
+  }
+  async function onToken(resp) {
+    if (!resp || resp.error || !resp.access_token) { toast('Sign-in didn’t finish'); return; }
+    if (!google.accounts.oauth2.hasGrantedAllScopes(resp, 'https://www.googleapis.com/auth/spreadsheets')) { askSignIn('Please allow access to Google Sheets — the tracker can’t read or save without it.'); return; }
+    token = resp.access_token; tokenExp = Date.now() + (+resp.expires_in || 3600) * 1000;
+    clearTimeout(onToken.warn); onToken.warn = setTimeout(() => toast('Your Google sign-in ends in 2 minutes — press Sign in again in the top bar to stay signed in'), Math.max(0, tokenExp - Date.now() - 120000));
+    try { const u = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json()); email = String(u.email || '').toLowerCase(); } catch (e) { email = ''; }
+    try { if (email) localStorage.setItem('t39gEmail', email); } catch (e) {}
+    paintBtn();
+    mcp = shimMcp;
+    if (CFG.bucketSheetId) { RDB = shimDb; rbSheet = null; }
+    if (!started) { started = true; setInterval(() => { if (!document.hidden && token) { Q = null; loadAll(); } }, 30 * 60 * 1000); }
+    Q = null; await loadAll(); identify(); rbSubscribe(); renderBucket();
+  }
+  /** Ties the Google account to a Team Details row by Email, so My work and Manual review act as that person. */
+  async function identify() {
+    if (!email || !D) return;
+    try {
+      const rows = await getValues(q(TD) + '!A1:H80'), h = rows.findIndex(r => r.includes('LDAP'));
+      if (h < 0) return; const li = rows[h].indexOf('LDAP'), ei = rows[h].findIndex(x => /email/i.test(x));
+      const hit = ei < 0 ? null : rows.slice(h + 1).find(r => String(r[ei] || '').trim().toLowerCase() === email);
+      const sel = $('meSel');
+      if (hit) {
+        const l = String(hit[li] || '').trim().toLowerCase();
+        if (l && l !== meLdap) { meLdap = l; try { localStorage.setItem('t39me', l); } catch (e) {} M = null; }
+        sel.value = meLdap; sel.disabled = true; sel.title = 'Set from your Google sign-in (' + email + ')';
+        loadMine(); renderBucket();
+      } else {
+        sel.disabled = false;
+        $('banner').insertAdjacentHTML('beforeend', '<div class="banner warn">' + esc(email) + ' isn’t in the Email column of Team Details, so the tracker can’t tell who you are. Choose your name on My work, or ask the Team Lead to add your email.</div>');
+      }
+    } catch (e) {}
+  }
+
+  /* ----- start ----- */
+  paintBtn();
+  $('attList').innerHTML = '<div class="card empty">Sign in with Google to load the Team 39 sheet.</div>';
+  askSignIn(CFG.clientId ? '' : 'Setup isn’t finished: add the Google client ID to config.js (see the README).');
+  if (!CFG.bucketSheetId) console.warn('T39: no bucketSheetId in config.js — Manual review picks cannot be saved.');
+})();
+</script>
+</body></html>
