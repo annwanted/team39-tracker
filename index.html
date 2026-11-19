@@ -1431,7 +1431,7 @@ function renderRbInfo() {
   const none = rbInfo.report.filter(r => r.have < n && !r.worked), shortL = rbInfo.report.filter(r => r.have < n && r.worked), full = rbInfo.report.filter(r => r.have >= n);
   const lines = [];
   if (none.length) lines.push('<b>No worked episodes yet on ' + esc(longDate(date)) + ':</b> ' + none.map(nm).join(', '));
-  if (shortL.length) lines.push('<b>Fewer than ' + n + ' available:</b> ' + shortL.map(r => nm(r) + ' (' + r.have + ' of ' + n + ')').join(', ') + '. Pick again later to top them up.');
+  if (shortL.length) lines.push('<b>Still short of ' + n + ':</b> ' + shortL.map(r => nm(r) + ' (' + r.have + ' of ' + n + ')').join(', ') + '. Pick again to top them up once they have more worked episodes.');
   if (full.length) lines.push('<b>Complete (' + n + '/' + n + '):</b> ' + full.map(nm).join(', '));
   if (rbInfo.n !== n) lines.push('Episodes per member changed to ' + n + '. Pick again to top everyone up to it.');
   box.innerHTML = lines.map(l => '<div>' + l + '</div>').join('');
