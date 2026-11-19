@@ -297,6 +297,7 @@ tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
     </div>
     <div class="row rbsave" id="rbSaveBar">
       <span class="muted small">Review here: every category starts as “No changes needed”. Change only the ones with mistakes, add notes, and tick the rows you've finished.</span>
+      <button class="btn sm" type="button" id="rbAllOn">Select all</button><button class="btn sm" type="button" id="rbAllOff">Deselect all</button>
       <div class="spacer"></div>
       <label class="small">Date reviewed <input type="date" id="rbRev"></label>
       <label class="small">Shift <select id="rbShift"></select></label>
@@ -1496,11 +1497,21 @@ function rbDraftOf(ep) { if (!rbDrafts[ep]) rbDrafts[ep] = { cats: Q ? Q.setup.c
 function rbReadyItems() { const day = $('rbDay').value || (D && D.today), doc = RBD[day]; return Object.values((doc && doc.items) || {}).filter(it => rbDrafts[it.ep] && rbDrafts[it.ep].on && !rbReviewed(it)); }
 function rbSaveState() {
   const n = rbReadyItems().length, ok = canPick(meLdap) && !!Q;
+  $('rbAllOn').hidden = $('rbAllOff').hidden = !canPick(meLdap);
   $('rbSave').disabled = !ok || !n || rbSaving; $('rbSave').textContent = n ? 'Save ' + n + ' review' + (n === 1 ? '' : 's') + ' to Reviewers Sheet' : 'Save reviews';
   if (Q && !$('rbShift').options.length) { let last = {}; try { last = JSON.parse(localStorage.getItem('t39qaLast') || '{}'); } catch (e) {}
     const sh = Q.setup.shifts.length ? Q.setup.shifts : ['core hours', 'extra hours']; $('rbShift').innerHTML = sh.map(s => '<option' + (s === last.shift ? ' selected' : '') + '>' + esc(s) + '</option>').join(''); }
   if (D && !$('rbRev').value) $('rbRev').value = D.today;
 }
+/** Select all / Deselect all: ticks or unticks Done on every unreviewed episode shown (follows the Taken on day and Taken by filter). Edits are kept either way. */
+function rbTickAll(on) {
+  if (!canPick(meLdap)) return;
+  const boxes = [...$('rbRows').querySelectorAll('input[data-rbon]:not(:disabled)')];
+  if (!boxes.length) return toast('No episodes to review on this list');
+  boxes.forEach(cb => { cb.checked = on; rbDraftOf(cb.dataset.rbon).on = on; cb.closest('tr').classList.toggle('ready', on); });
+  rbSaveState(); toast((on ? 'Selected ' : 'Deselected ') + boxes.length + ' episode' + (boxes.length === 1 ? '' : 's'));
+}
+$('rbAllOn').onclick = () => rbTickAll(true); $('rbAllOff').onclick = () => rbTickAll(false);
 $('rbRows').addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.rbon) { rbDraftOf(el.dataset.rbon).on = el.checked; el.closest('tr').classList.toggle('ready', el.checked); rbSaveState(); return; }
