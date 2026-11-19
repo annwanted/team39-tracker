@@ -753,7 +753,12 @@ async function loadReviews() {
     Q = { setup: S, rows: list };
     renderQA(); renderReport(); renderPerf(); renderChecks(); renderBucket();
     loadReviewOptions();
-  } catch (e) { $('qaRows').innerHTML = '<tr><td class="empty">Could not read the Reviewers Sheet: ' + esc(errText(e)) + '</td></tr>'; }
+  } catch (e) {
+    // keep the reviews already loaded (Save stays usable); if none are loaded yet, try again shortly
+    if (Q) { toast('Could not refresh the Reviewers Sheet: ' + errText(e)); return; }
+    $('qaRows').innerHTML = '<tr><td class="empty">Could not read the Reviewers Sheet: ' + esc(errText(e)) + '. Trying again in 20 seconds…</td></tr>';
+    setTimeout(() => { if (!Q) loadReviews(); }, 20000); rbSaveState();
+  }
 }
 function revRec(S, r, row) {
   const g = i => String(r[i] == null ? '' : r[i]).trim();
@@ -1498,7 +1503,8 @@ function rbReadyItems() { const day = $('rbDay').value || (D && D.today), doc = 
 function rbSaveState() {
   const n = rbReadyItems().length, ok = canPick(meLdap) && !!Q;
   $('rbAllOn').hidden = $('rbAllOff').hidden = !canPick(meLdap);
-  $('rbSave').disabled = !ok || !n || rbSaving; $('rbSave').textContent = n ? 'Save ' + n + ' review' + (n === 1 ? '' : 's') + ' to Reviewers Sheet' : 'Save reviews';
+  $('rbSave').disabled = !ok || !n || rbSaving; $('rbSave').title = n && !Q ? 'Waiting for the Reviewers Sheet to load' : '';
+  $('rbSave').textContent = n && !Q ? 'Loading the Reviewers Sheet…' : n ? 'Save ' + n + ' review' + (n === 1 ? '' : 's') + ' to Reviewers Sheet' : 'Save reviews';
   if (Q && !$('rbShift').options.length) { let last = {}; try { last = JSON.parse(localStorage.getItem('t39qaLast') || '{}'); } catch (e) {}
     const sh = Q.setup.shifts.length ? Q.setup.shifts : ['core hours', 'extra hours']; $('rbShift').innerHTML = sh.map(s => '<option' + (s === last.shift ? ' selected' : '') + '>' + esc(s) + '</option>').join(''); }
   if (D && !$('rbRev').value) $('rbRev').value = D.today;
@@ -1710,7 +1716,7 @@ function errBanner(e) {
     '<button type="button" class="btn sm" data-reload>Reload</button></div>' : '') + '</div>';
 }
 $('banner').addEventListener('click', async e => {
-  if (e.target.closest('[data-reload]')) { if (mcp) { Q = null; loadAll(); } else location.reload(); return; }
+  if (e.target.closest('[data-reload]')) { if (mcp) { loadAll(); } else location.reload(); return; }
   if (!e.target.closest('[data-perm]')) return;
   const perms = window.claude && window.claude.use ? await window.claude.use('permissions') : null;
   if (!perms) return toast('Open this page’s Permissions menu on claude.ai and allow Google Sheets');
@@ -1803,7 +1809,7 @@ function showManage() {
     initWorkbooks(); if (!left.length) return showEnroll(); if (was) { Q = null; M = null; loadAll(); } else showManage();
   }));
 }
-$('reloadBtn').onclick = () => { Q = null; loadAll(); };
+$('reloadBtn').onclick = () => { loadAll(); };
 initWorkbooks();
 try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
 (async () => {
@@ -1811,7 +1817,7 @@ try { showTab(localStorage.getItem('t39tab') || 'mine'); } catch (e) {}
   mcp = window.claude && window.claude.use ? await window.claude.use('mcp') : null;
   if (!mcp) { status('err', 'Not connected'); $('banner').innerHTML = errBanner({ code: 'no_mcp' }); $('attList').innerHTML = '<div class="card empty">Open this tracker on claude.ai or in the Claude app with the Google Sheets connector added.</div>'; return; }
   loadAll();
-  setInterval(() => { if (!document.hidden) { Q = null; loadAll(); } }, 30 * 60 * 1000);
+  setInterval(() => { if (!document.hidden && !rbSaving) { loadAll(); } }, 30 * 60 * 1000);
 })();
 </script>
 
