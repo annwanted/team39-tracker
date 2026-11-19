@@ -636,10 +636,12 @@ $('clearAllBtn').onclick = e => arm(e.currentTarget, 'Click again to clear all',
 
 /* ===== daily report ===== */
 function dayReport(d) {
-  const day = D.days[d], rows = day ? day.rows : [], pres = rows.filter(r => r.present);
+  // team members only: the Team Lead and the reviewer (Designation in Team Details) are left out of the report
+  const staff = l => /team lead|reviewer/i.test(((D.roster[l]) || {}).role || '');
+  const day = D.days[d], rows = (day ? day.rows : []).filter(r => !staff(r.ldap)), pres = rows.filter(r => r.present);
   const sum = (a, k) => a.reduce((s, r) => s + r[k], 0);
   const work = sum(pres, 'work'), dqa = sum(rows, 'dqa'), labels = sum(rows, 'labels'), segs = sum(rows, 'segs'), revs = sum(rows, 'revs'), ded = sum(pres, 'ded');
-  const fb = Q ? Q.rows.filter(x => (x.dRev || x.dEval) === d && x.err > 0) : [];
+  const fb = Q ? Q.rows.filter(x => (x.dRev || x.dEval) === d && x.err > 0 && !staff(x.ldap)) : [];
   const feedback = !Q ? 'feedback: loading reviews…' : fb.length ? 'feedback: ' + fb.map(x => nameOf(x.ldap).split(' ')[0] + ' (' + x.err + ' error' + (x.err === 1 ? '' : 's') + ')').join(', ') : 'no feedback';
   const per = n => work ? n / work : 0;
   return { d, has: !!day, team: pres.length, work, dqa, labels, segs, revs, ded, feedback,
@@ -652,7 +654,7 @@ function renderReport() {
   $('repTable').innerHTML = '<tr class="head"><td class="v">TEAM 39</td><td>' + longDate(d) + '</td></tr>' +
     r.lines.map(([v, t]) => '<tr><td class="v">' + esc(typeof v === 'number' ? fmt(v) : v) + '</td><td>' + t + '</td></tr>').join('') +
     '<tr class="ded"><td class="v">' + fmt(r.ded, 2) + '</td><td>deductive hours</td></tr><tr class="fb"><td class="v"></td><td>' + esc(r.feedback) + '</td></tr>';
-  $('repNote').textContent = !r.has ? 'Main Tracker has no block for this day.' : r.team ? 'Annotators = people with Time In filled. Working hours, data QA, labels and reviews are the sheet’s own day-row formulas (net hours + extra hours).' : 'Nobody has Time In filled for this day yet, so annotators and hours are 0.';
+  $('repNote').textContent = !r.has ? 'Main Tracker has no block for this day.' : r.team ? 'Annotators = team members with Time In filled (the Team Lead and the reviewer are left out). Working hours, data QA, labels and reviews are the sheet’s own day-row formulas (net hours + extra hours).' : 'Nobody has Time In filled for this day yet, so annotators and hours are 0.';
 }
 $('copyBtn').onclick = async () => {
   const r = dayReport($('repDate').value || attDate.value);
