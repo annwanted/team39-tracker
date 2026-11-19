@@ -126,7 +126,8 @@ details.grp summary{padding:9px 12px;cursor:pointer;display:flex;gap:8px;align-i
 tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
 .rbsave{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--soft)}
 #rbRows select,#rbRows input[type=text]{font-size:12px;padding:3px 5px;min-width:120px;width:100%}
-#rbRows select.bad{border-color:var(--warn);color:var(--warn)}
+#rbRows select.bad,#rbRows input.rbcat.bad{border-color:var(--warn);color:var(--warn)}
+#rbRows input.rbcat{min-width:170px;width:100%}
 #rbRows tr.ready td{background:var(--accent-soft)}
 #rbRows input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
 </style>
@@ -299,7 +300,7 @@ tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
       <label class="small">Shift <select id="rbShift"></select></label>
       <button class="btn primary" type="button" id="rbSave" disabled>Save reviews</button>
     </div>
-    <div class="tablewrap" style="margin-top:8px"><table id="rbRows"><tr><td class="empty">Loading the review bucket…</td></tr></table></div>
+    <div class="tablewrap" style="margin-top:8px"><table id="rbRows"><tr><td class="empty">Loading the review bucket…</td></tr></table></div><div id="rbLists" hidden></div>
   </div>
   <p class="muted small">Picks come from members' own tabs: entries stamped on the work date, of the chosen types, never breaks or end-of-shift rows. Each episode can be taken only once a day, so the Team Lead and the reviewer never get the same one. By default the pick also skips episodes already in the Reviewers Sheet or taken on an earlier day. Which episodes are taken is kept by the tracker itself; a finished review is written straight into the Reviewers Sheet (annotator, episode, task, work date as Date Evaluated, Date reviewed, you as reviewer, shift, the four categories and notes), in one write, after its last filled row. Perfect and Errors stay the sheet's formulas. An episode shows as Reviewed once the Reviewers Sheet has a review of it dated on or after the day it was taken.</p>
 </section>
@@ -1465,9 +1466,13 @@ function renderBucket() {
   items.forEach(it => (groups[it.ldap] = groups[it.ldap] || []).push(it));
   const keys = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 999 * (order.indexOf(a) < 0)) - (order.indexOf(b) + 999 * (order.indexOf(b) < 0)));
   const cols = 6 + cats.length + (S && S.notesCol > -1 ? 1 : 0);
-  const catCell = (it, k) => { const c = cats[k], d = rbDraftOf(it.ep), v = d.cats[k] || S.perfect, bad = isPerfect(v) ? '' : ' class="bad"';
-    const o = c.options.length ? (c.options.includes(v) ? c.options : [v].concat(c.options)) : [S.perfect, v].filter((x, i, a) => a.indexOf(x) === i);
-    return '<td><select data-rbep="' + esc(it.ep) + '" data-rbk="' + k + '"' + bad + (ok ? '' : ' disabled') + '>' + o.map(x => '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></td>'; };
+  // Each category is a text box: pick a suggestion (the sheet's dropdown values, then values already used in that column) or type / paste your own correction.
+  const catCell = (it, k) => { const d = rbDraftOf(it.ep), v = d.cats[k] || S.perfect, bad = isPerfect(v) ? '' : ' bad';
+    return '<td><input class="rbcat' + bad + '" list="rbl' + k + '" data-rbep="' + esc(it.ep) + '" data-rbk="' + k + '" value="' + esc(v) + '" title="Pick a suggestion, or type or paste your correction"' + (ok ? '' : ' disabled') + '></td>'; };
+  const catLists = !S ? '' : cats.map((c, k) => { const freq = {}; Q.rows.forEach(r => { const x = String(r.cats[k] || '').trim(); if (x && !isPerfect(x)) freq[x] = (freq[x] || 0) + 1; });
+    const sug = [S.perfect].concat(c.options, Object.keys(freq).sort((a, b) => freq[b] - freq[a]).slice(0, 40)).filter((x, i, a) => x && a.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i);
+    return '<datalist id="rbl' + k + '">' + sug.map(o => '<option value="' + esc(o) + '">').join('') + '</datalist>'; }).join('');
+  $('rbLists').innerHTML = catLists;
   $('rbRows').innerHTML = '<tr><th>Done</th><th>Episode ID</th><th>Task</th><th>Taken by</th>' + cats.map(c => '<th>' + esc(c.name) + '</th>').join('') + (S && S.notesCol > -1 ? '<th>' + esc(S.notesName || 'Notes') + '</th>' : '') + '<th>Status</th><th></th></tr>' + keys.map(l => {
     const list = groups[l].sort((a, b) => a.row - b.row), n = list.filter(rbReviewed).length;
     return '<tr class="rbhead"><td colspan="' + cols + '">' + esc(nameOf(l)) + ' <span class="muted small">' + list.length + ' taken · ' + n + ' reviewed</span></td></tr>' + list.map(it => {
@@ -1503,7 +1508,7 @@ $('rbRows').addEventListener('change', e => {
   if (el.dataset.rbon) { rbDraftOf(el.dataset.rbon).on = el.checked; el.closest('tr').classList.toggle('ready', el.checked); rbSaveState(); return; }
   const ep = el.dataset.rbep, k = el.dataset.rbk; if (!ep || k == null) return;
   const d = rbDraftOf(ep);
-  if (k === 'notes') d.notes = el.value.trim(); else { d.cats[+k] = el.value; el.classList.toggle('bad', !isPerfect(el.value)); }
+  if (k === 'notes') d.notes = el.value.trim(); else { const v = el.value.trim() || Q.setup.perfect; if (!el.value.trim()) el.value = v; d.cats[+k] = v; el.classList.toggle('bad', !isPerfect(v)); }
   // editing a row means you're reviewing it: tick it so it is saved
   if (!d.on) { d.on = true; const cb = el.closest('tr').querySelector('[data-rbon]'); if (cb) cb.checked = true; el.closest('tr').classList.add('ready'); }
   rbSaveState();
