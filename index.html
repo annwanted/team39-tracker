@@ -277,6 +277,7 @@ tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
     <div class="chips" id="rbMembers"></div>
     <label class="small" style="display:block;margin:10px 0"><input type="checkbox" id="rbAgain"> Include episodes already reviewed, or taken on an earlier day</label>
     <div class="row"><button class="btn primary" type="button" id="rbPick">Pick randomly</button><span class="muted small" id="rbProgress"></span></div>
+    <div id="rbInfo" class="banner info" style="margin:10px 0 0" hidden></div>
   </div>
   <div class="kpis" id="rbKpis"></div>
   <div class="card">
@@ -1412,10 +1413,32 @@ $('rbAll').onclick = () => { rbPeople().forEach(m => rbSel.add(m.ldap)); initBuc
 $('rbNone').onclick = () => { rbSel.clear(); $('rbMembers').querySelectorAll('input').forEach(i => i.checked = false); };
 document.querySelectorAll('[data-rbday]').forEach(b => b.onclick = () => { const n = +b.dataset.rbday; $('rbDay').value = n ? addDays($('rbDay').value || D.today, n) : D.today; renderBucket(); });
 $('rbDay').onchange = renderBucket; $('rbBy').onchange = renderBucket;
+$('rbDate').addEventListener('change', renderRbInfo); $('rbN').addEventListener('input', renderRbInfo);
 /** Every item taken on any loaded day, by episode. */
 function rbTakenAll() { const out = {}; Object.values(RBD).forEach(doc => Object.values(doc.items || {}).forEach(it => (out[it.ep] = out[it.ep] || []).push(it))); return out; }
 const rbReviewed = it => Q ? Q.rows.filter(x => x.ep === it.ep && revDay(x) && revDay(x) >= it.day).sort((a, b) => b.row - a.row)[0] : null;
+var rbInfo = null;
+/** The note under Pick randomly: who has no worked episodes yet, who is short, who is complete. */
+function renderRbInfo() {
+  const box = $('rbInfo'); if (!box) return;
+  const date = $('rbDate').value, n = Math.round(+$('rbN').value);
+  if (!rbInfo || rbInfo.date !== date) { box.hidden = true; return; }
+  const nm = r => esc(nameOf(r.ldap).split(' ')[0]);
+  // Live count per member for this work date, so a Release or someone else's pick shows at once.
+  const live = {}, seen = new Set();
+  Object.values(RBD).forEach(doc => Object.values((doc && doc.items) || {}).forEach(it => { if (it.workDate === date && !seen.has(it.ep)) { seen.add(it.ep); live[it.ldap] = (live[it.ldap] || 0) + 1; } }));
+  rbInfo.report.forEach(r => { r.have = live[r.ldap] || 0; });
+  const none = rbInfo.report.filter(r => r.have < n && !r.worked), shortL = rbInfo.report.filter(r => r.have < n && r.worked), full = rbInfo.report.filter(r => r.have >= n);
+  const lines = [];
+  if (none.length) lines.push('<b>No worked episodes yet on ' + esc(longDate(date)) + ':</b> ' + none.map(nm).join(', '));
+  if (shortL.length) lines.push('<b>Fewer than ' + n + ' available:</b> ' + shortL.map(r => nm(r) + ' (' + r.have + ' of ' + n + ')').join(', ') + '. Pick again later to top them up.');
+  if (full.length) lines.push('<b>Complete (' + n + '/' + n + '):</b> ' + full.map(nm).join(', '));
+  if (rbInfo.n !== n) lines.push('Episodes per member changed to ' + n + '. Pick again to top everyone up to it.');
+  box.innerHTML = lines.map(l => '<div>' + l + '</div>').join('');
+  box.hidden = !lines.length;
+}
 function renderBucket() {
+  renderRbInfo();
   if (!D || !$('rbRows')) return;
   const me = meLdap, ok = canPick(me);
   $('rbWho').textContent = me ? 'Picking as ' + nameOf(me) + (roleOf(me) ? ' (' + roleOf(me) + ')' : '') : '';
@@ -1590,19 +1613,29 @@ $('rbPick').onclick = async () => {
     $('rbProgress').textContent = 'Saving picks…';
     const reviewed = new Set(Q.rows.map(x => x.ep)), today = D.today;
     const res = await rbWithDay(today, items => {
-      const earlier = rbTakenAll(), picked = [], short = [];
+      const earlier = rbTakenAll(), picked = [], report = [];
+      // Episodes already taken for this work date, per member: today's fresh record plus earlier days' records.
+      const have = {}, seen = new Set();
+      const count = it => { if (it && it.workDate === date && !seen.has(it.ep)) { seen.add(it.ep); have[it.ldap] = (have[it.ldap] || 0) + 1; } };
+      Object.values(items).forEach(count);
+      Object.entries(RBD).forEach(([d, doc]) => { if (d !== today) Object.values((doc && doc.items) || {}).forEach(count); });
       people.forEach(m => {
-        const pool = rbShuffle((cands[m.ldap] || []).filter(c => !items[c.ep] && (again || (!reviewed.has(c.ep) && !(earlier[c.ep] || []).some(it => it.day !== today)))));
-        const take = pool.slice(0, n);
-        take.forEach(c => { items[c.ep] = { ep: c.ep, ldap: c.ldap, task: c.task, row: c.row, type: c.type, workDate: c.workDate, day: today, by: meLdap, at: Date.now() }; picked.push(c); });
-        if (take.length < n) short.push(nameOf(m.ldap).split(' ')[0] + ' ' + take.length);
+        const had = have[m.ldap] || 0, need = Math.max(0, n - had), worked = (cands[m.ldap] || []).length;
+        let took = 0;
+        if (need) {
+          const pool = rbShuffle((cands[m.ldap] || []).filter(c => !items[c.ep] && !seen.has(c.ep) && (again || (!reviewed.has(c.ep) && !(earlier[c.ep] || []).some(it => it.day !== today)))));
+          pool.slice(0, need).forEach(c => { items[c.ep] = { ep: c.ep, ldap: c.ldap, task: c.task, row: c.row, type: c.type, workDate: c.workDate, day: today, by: meLdap, at: Date.now() }; picked.push(c); took++; });
+        }
+        report.push({ ldap: m.ldap, have: had + took, took, worked });
       });
-      return { changed: picked.length > 0, picked, short };
+      return { changed: picked.length > 0, picked, report };
     });
     $('rbDay').value = today; $('rbBy').value = '';
     status('ok', 'Picked ' + nowT());
-    $('rbProgress').textContent = res.short.length ? 'Fewer available for: ' + res.short.join(', ') : '';
-    toast(res.picked.length ? 'Took ' + res.picked.length + ' episode' + (res.picked.length === 1 ? '' : 's') + ' from ' + longDate(date) : 'Nothing left to take for ' + longDate(date));
+    $('rbProgress').textContent = '';
+    rbInfo = { date, n, report: res.report };
+    const done = res.report.filter(r => r.have >= n).length;
+    toast(res.picked.length ? 'Took ' + res.picked.length + ' episode' + (res.picked.length === 1 ? '' : 's') + ' from ' + longDate(date) : done === res.report.length ? 'Everyone already has ' + n + ' for ' + longDate(date) : 'Nothing more to take for ' + longDate(date));
   } catch (e) { status('err', 'Not picked'); $('rbProgress').textContent = ''; toast('Not picked — ' + errText(e)); }
   finally { rbBusy = false; renderBucket(); }
 };
