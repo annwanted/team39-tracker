@@ -180,8 +180,7 @@ tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
   <div class="card" id="mForm" hidden>
     <div class="row"><b id="mFormTitle">Post work</b><span class="muted small" id="mFormHint">Added to the end of your tab. The sheet stamps the time, and Main Tracker counts it.</span></div>
     <div class="qgrid">
-      <label class="wide">Episode ID <span id="mEpHint">— paste several, one per line</span><textarea id="mEp" rows="3" spellcheck="false" placeholder="2026-11-14-004618Z-h2_0523-8b1c6466f0f5"></textarea></label>
-      <label class="wide">Task name<input id="mTask" list="mTaskList" spellcheck="false"><datalist id="mTaskList"></datalist></label>
+      <label class="wide">Episode ID and task name <span id="mEpHint">— one episode per line: the Episode ID, then its task name</span><textarea id="mEp" rows="4" spellcheck="false" placeholder="2026-11-14-004618Z-h2_0523-8b1c6466f0f5   laundry_garment/fold:apparel"></textarea><span class="muted small" id="mEpCount"></span></label>
       <label>Type<select id="mType"></select></label>
       <label>Shift<select id="mShift"></select></label>
       <label>Labels count<input type="number" id="mLabels" min="0" step="1" inputmode="numeric"></label>
@@ -1176,10 +1175,30 @@ function fillMineForm(force) {
   const curType = $('mType').value, curShift = $('mShift').value;
   setSel($('mType'), M.opts.type, force || !curType ? (lastWork.type || M.opts.type[0]) : curType);
   setSel($('mShift'), M.opts.shift, force || !curShift ? (lastWork.shift || M.opts.shift[0]) : curShift);
-  if (force || !$('mTask').value) $('mTask').value = lastWork.task || '';
-  const tasks = []; [...M.rows].reverse().forEach(r => { if (r.task && !tasks.includes(r.task) && tasks.length < 25) tasks.push(r.task); });
-  $('mTaskList').innerHTML = tasks.map(t => '<option value="' + esc(t) + '">').join('');
 }
+/**
+ * Reads the pasted box: each episode is its Episode ID followed by its task name, separated by a tab, comma or spaces
+ * (rows copied from a sheet paste fine; extra copied columns after the task are ignored).
+ * When the IDs look like "2026-11-14-…", a task name on the line under its ID is joined to it too.
+ */
+function mParseEps(text) {
+  const lines = String(text || '').split(/\r?\n/).map(s => s.replace(/^[\s,]+|\s+$/g, '')).filter(Boolean);
+  const idLike = s => /^\d{4}-\d{2}-\d{2}-\S+$/.test(s), split = line => { const m = line.match(/^([^\s,]+)[\s,]*(.*)$/); return [m[1], m[2].split('\t')[0].trim()]; };
+  const dated = lines.some(l => idLike(split(l)[0])), out = [];
+  lines.forEach(line => {
+    const [id, rest] = split(line), prev = out[out.length - 1];
+    if (dated && !idLike(id)) { if (prev && !prev.task) prev.task = line.split('\t')[0].trim(); else out.push({ ep: id, task: rest, bad: true }); return; }
+    out.push({ ep: id, task: rest });
+  });
+  const seen = new Set(), eps = out.filter(e => !seen.has(e.ep) && seen.add(e.ep));
+  return { eps, noTask: eps.filter(e => !e.task && !e.bad), bad: eps.filter(e => e.bad) };
+}
+function mEpCount() {
+  if (mEdit) { $('mEpCount').textContent = ''; return; }
+  const p = mParseEps($('mEp').value), n = p.eps.length;
+  $('mEpCount').textContent = !n ? '' : n + ' episode' + (n === 1 ? '' : 's') + (p.noTask.length ? ' · ' + p.noTask.length + ' without a task name' : '') + (p.bad.length ? ' · ' + p.bad.length + ' line' + (p.bad.length === 1 ? '' : 's') + ' not read as an episode' : '');
+}
+$('mEp').addEventListener('input', mEpCount);
 function renderMine() {
   if (!D || !M || M.ldap !== meLdap) return;
   const [f, t] = mRange(), single = f === t;
@@ -1275,22 +1294,23 @@ async function mRefreshMain(d) {
 function mFormVals() {
   const lab = $('mLabels').value.trim(), labels = lab === '' ? '' : Math.round(+lab);
   if (lab !== '' && (!isFinite(labels) || labels < 0)) { toast('Labels count must be 0 or more'); return null; }
-  const v = { task: $('mTask').value.trim(), type: $('mType').value, shift: $('mShift').value, notes: $('mNotes').value.trim(), labels };
+  const v = { type: $('mType').value, shift: $('mShift').value, notes: $('mNotes').value.trim(), labels };
   if (!v.type || !v.shift) { toast('Pick the type and shift'); return null; }
   return v;
 }
 $('mPost').onclick = async () => {
   if (!M) return;
   if (mEdit) return mSaveEdit();
-  const eps = [...new Set($('mEp').value.split(/[\s,]+/).map(s => s.trim()).filter(Boolean))];
-  if (!eps.length) return toast('Paste at least one Episode ID');
-  if (eps.some(isMarker)) return toast('Use the Log break / End of shift buttons for those');
+  const p = mParseEps($('mEp').value), eps = p.eps;
+  if (!eps.length) return toast('Paste at least one Episode ID with its task name');
+  if (eps.some(e => isMarker(e.ep))) return toast('Use the Log break / End of shift buttons for those');
+  if (p.bad.length) return toast('This line doesn’t start with an Episode ID: ' + p.bad[0].ep + (p.bad[0].task ? ' ' + p.bad[0].task : ''));
+  if (p.noTask.length) return toast('Add the task name after ' + (p.noTask.length === 1 ? 'this Episode ID: ' + p.noTask[0].ep.slice(-12) : p.noTask.length + ' Episode IDs, starting with ' + p.noTask[0].ep.slice(-12)));
   const v = mFormVals(); if (!v) return;
-  if (!v.task) return toast('Enter the task name');
-  const dups = eps.map(e => M.rows.find(r => r.ep === e)).filter(Boolean);
+  const dups = eps.map(e => M.rows.find(r => r.ep === e.ep)).filter(Boolean);
   if (dups.length) return toast('Already in your tab: ' + dups.map(r => r.ep.slice(-12) + ' (row ' + r.row + ')').join(', '));
-  const ok = await mAppend(eps.map(ep => [ep, v.task, v.labels, null, null, v.shift, v.type, v.notes]), eps.length === 1 ? 'Posted 1 episode' : 'Posted ' + eps.length + ' episodes in one save');
-  if (ok) { $('mEp').value = ''; $('mNotes').value = ''; $('mLabels').value = ''; $('mEp').focus(); }
+  const ok = await mAppend(eps.map(e => [e.ep, e.task, v.labels, null, null, v.shift, v.type, v.notes]), eps.length === 1 ? 'Posted 1 episode' : 'Posted ' + eps.length + ' episodes in one save');
+  if (ok) { $('mEp').value = ''; $('mNotes').value = ''; $('mLabels').value = ''; mEpCount(); $('mEp').focus(); }
 };
 $('mBreak').onclick = () => { if (!M) return; const last = M.rows[M.rows.length - 1]; if (last && /^break$/i.test(last.ep)) return toast('Your last entry is already a break'); mAppend([['BREAK']], 'Break logged'); };
 $('mEos').onclick = e => { if (!M) return; arm(e.currentTarget, 'Click again to end shift', () => { const last = M.rows[M.rows.length - 1]; if (last && /^eos$/i.test(last.ep)) return toast('Your last entry is already EOS'); mAppend([['EOS']], 'End of shift logged'); }); };
@@ -1303,7 +1323,7 @@ function mOpenEdit(row) {
   const r = M.rows.find(x => x.row === row); if (!r) return;
   mEdit = r;
   $('mFormTitle').textContent = 'Edit entry (row ' + row + ' of your tab)'; $('mFormHint').textContent = 'The stamped time stays the same.';
-  $('mEpHint').hidden = true; $('mEp').rows = 1; $('mEp').value = r.ep; $('mTask').value = r.task;
+  $('mEpHint').hidden = true; $('mEp').rows = 2; $('mEp').value = r.ep + (r.task ? '   ' + r.task : ''); mEpCount();
   setSel($('mType'), M.opts.type, r.type); setSel($('mShift'), M.opts.shift, r.shift);
   $('mLabels').value = r.labels == null ? '' : r.labels; $('mNotes').value = r.notes;
   $('mPost').textContent = 'Save changes'; $('mCancel').hidden = false; $('mBreak').hidden = $('mEos').hidden = true;
@@ -1312,13 +1332,15 @@ function mOpenEdit(row) {
 function mCancelEdit() {
   const was = !!mEdit; mEdit = null;
   $('mFormTitle').textContent = 'Post work'; $('mFormHint').textContent = 'Added to the end of your tab. The sheet stamps the time, and Main Tracker counts it.';
-  $('mEpHint').hidden = false; $('mEp').rows = 3; $('mPost').textContent = 'Post'; $('mCancel').hidden = true; $('mBreak').hidden = $('mEos').hidden = false;
+  $('mEpHint').hidden = false; $('mEp').rows = 4; $('mPost').textContent = 'Post'; $('mCancel').hidden = true; $('mBreak').hidden = $('mEos').hidden = false;
   if (was) { $('mEp').value = ''; $('mNotes').value = ''; $('mLabels').value = ''; fillMineForm(true); renderMine(); }
 }
 $('mCancel').onclick = mCancelEdit;
 async function mSaveEdit() {
-  const r = mEdit, ep = $('mEp').value.trim(), v = mFormVals(); if (!v) return;
-  if (!ep || /\s/.test(ep)) return toast('Enter one Episode ID');
+  const r = mEdit, p = mParseEps($('mEp').value), v = mFormVals(); if (!v) return;
+  if (p.eps.length !== 1 || p.bad.length) return toast('Enter one Episode ID and its task name');
+  const ep = p.eps[0].ep; v.task = p.eps[0].task;
+  if (!v.task) return toast('Add the task name after the Episode ID');
   const dup = ep !== r.ep && M.rows.find(x => x.ep === ep); if (dup) return toast('That Episode ID is already in row ' + dup.row);
   if (mBusy) return; mLock(true); status('busy', 'Saving…');
   try {
