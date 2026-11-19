@@ -290,6 +290,7 @@ tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
       <label class="small">Taken by <select id="rbBy"><option value="">Everyone</option></select></label>
       <div class="spacer"></div>
       <button class="btn sm" type="button" id="rbCopy">Copy Episode IDs</button>
+      <button class="btn sm danger" type="button" id="rbClear" title="Puts every episode on this day that isn't reviewed yet back in the pool. Reviewed ones stay.">Clear picks</button>
     </div>
     <div class="row rbsave" id="rbSaveBar">
       <span class="muted small">Review here: every category starts as “No changes needed”. Change only the ones with mistakes, add notes, and tick the rows you've finished.</span>
@@ -1448,6 +1449,7 @@ function renderBucket() {
   if (!ok) ban += '<div class="banner info">Only the Team Lead and the reviewer can pick, review or release episodes here.' + (me ? esc(nameOf(me)) + ' is listed as ' + esc(roleOf(me) || 'no role') + ' in Team Details.' : 'Choose your name on the My work tab first.') + '</div>';
   $('rbBanner').innerHTML = ban;
   $('rbPick').disabled = !ok || !RDB || rbBusy;
+  $('rbClear').hidden = !ok || !RDB;
   const day = $('rbDay').value || D.today, doc = RBD[day], by = $('rbBy').value;
   const items = Object.values((doc && doc.items) || {}).filter(it => !by || it.by === by);
   const done = items.filter(rbReviewed);
@@ -1648,6 +1650,23 @@ $('rbRows').addEventListener('click', async e => {
     catch (x) { toast('Not released — ' + errText(x)); }
   });
 });
+/** Clear picks: releases every unreviewed episode taken on the shown day (only those by the chosen "Taken by", if one is chosen). */
+$('rbClear').onclick = () => {
+  if (!canPick(meLdap) || !RDB || rbBusy) return;
+  const day = $('rbDay').value || D.today, by = $('rbBy').value, doc = RBD[day];
+  const eps = Object.values((doc && doc.items) || {}).filter(it => (!by || it.by === by) && !rbReviewed(it)).map(it => it.ep);
+  if (!eps.length) return toast('Nothing to clear: every pick on ' + longDate(day) + (by ? ' by ' + nameOf(by).split(' ')[0] : '') + ' is reviewed');
+  arm($('rbClear'), 'Click again to clear ' + eps.length, async () => {
+    rbBusy = true; renderBucket(); status('busy', 'Clearing picks…');
+    try {
+      const r = await rbWithDay(day, items => { let n = 0; eps.forEach(ep => { if (items[ep]) { delete items[ep]; n++; } }); return { changed: n > 0, n }; });
+      eps.forEach(ep => { if (typeof rbDrafts !== 'undefined') delete rbDrafts[ep]; });
+      status('ok', 'Cleared ' + nowT());
+      toast('Cleared ' + r.n + ' pick' + (r.n === 1 ? '' : 's') + ' from ' + longDate(day) + '. Reviewed ones were kept.');
+    } catch (x) { status('err', 'Not cleared'); toast('Not cleared — ' + errText(x)); }
+    finally { rbBusy = false; renderBucket(); }
+  });
+};
 $('rbCopy').onclick = async () => {
   const day = $('rbDay').value || D.today, by = $('rbBy').value, doc = RBD[day];
   const text = Object.values((doc && doc.items) || {}).filter(it => (!by || it.by === by) && !rbReviewed(it)).map(it => it.ep).join('\n');
