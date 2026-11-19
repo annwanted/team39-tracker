@@ -127,7 +127,10 @@ tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
 .rbsave{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--soft)}
 #rbRows select,#rbRows input[type=text]{font-size:12px;padding:3px 5px;min-width:120px;width:100%}
 #rbRows select.bad,#rbRows input.rbcat.bad{border-color:var(--warn);color:var(--warn)}
-#rbRows input.rbcat{min-width:170px;width:100%}
+#rbRows textarea.rbcat.bad{border-color:var(--warn);color:var(--warn)}
+#rbRows textarea.rbcat{display:block;min-width:190px;width:100%;resize:vertical;font:inherit;font-size:12px;line-height:1.35;max-height:2.2em;overflow:hidden}
+#rbRows textarea.rbcat:focus{max-height:none;min-height:7em;overflow:auto}
+#rbRows select.rbsug{display:block;width:100%;margin-top:3px;font-size:11px;color:var(--muted)}
 #rbRows tr.ready td{background:var(--accent-soft)}
 #rbRows input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
 </style>
@@ -1466,13 +1469,14 @@ function renderBucket() {
   items.forEach(it => (groups[it.ldap] = groups[it.ldap] || []).push(it));
   const keys = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 999 * (order.indexOf(a) < 0)) - (order.indexOf(b) + 999 * (order.indexOf(b) < 0)));
   const cols = 6 + cats.length + (S && S.notesCol > -1 ? 1 : 0);
-  // Each category is a text box: pick a suggestion (the sheet's dropdown values, then values already used in that column) or type / paste your own correction.
-  const catCell = (it, k) => { const d = rbDraftOf(it.ep), v = d.cats[k] || S.perfect, bad = isPerfect(v) ? '' : ' bad';
-    return '<td><input class="rbcat' + bad + '" list="rbl' + k + '" data-rbep="' + esc(it.ep) + '" data-rbk="' + k + '" value="' + esc(v) + '" title="Pick a suggestion, or type or paste your correction"' + (ok ? '' : ' disabled') + '></td>'; };
-  const catLists = !S ? '' : cats.map((c, k) => { const freq = {}; Q.rows.forEach(r => { const x = String(r.cats[k] || '').trim(); if (x && !isPerfect(x)) freq[x] = (freq[x] || 0) + 1; });
-    const sug = [S.perfect].concat(c.options, Object.keys(freq).sort((a, b) => freq[b] - freq[a]).slice(0, 40)).filter((x, i, a) => x && a.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i);
-    return '<datalist id="rbl' + k + '">' + sug.map(o => '<option value="' + esc(o) + '">').join('') + '</datalist>'; }).join('');
-  $('rbLists').innerHTML = catLists;
+  // Each category is a text area (keeps line breaks when you paste a correction) plus a Suggestions menu:
+  // the sheet's dropdown values, then corrections already used in that column, most used first.
+  rbSug = !S ? [] : cats.map((c, k) => { const freq = {}; Q.rows.forEach(r => { const x = String(r.cats[k] || '').trim(); if (x && !isPerfect(x)) freq[x] = (freq[x] || 0) + 1; });
+    return [S.perfect].concat(c.options, Object.keys(freq).sort((a, b) => freq[b] - freq[a]).slice(0, 40)).filter((x, i, a) => x && a.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i); });
+  const short = s => { const t = s.replace(/\s+/g, ' '); return t.length > 70 ? t.slice(0, 68) + '…' : t; };
+  const catCell = (it, k) => { const d = rbDraftOf(it.ep), v = d.cats[k] || S.perfect, bad = isPerfect(v) ? '' : ' bad', dis = ok ? '' : ' disabled';
+    return '<td><textarea class="rbcat' + bad + '" rows="1" data-rbep="' + esc(it.ep) + '" data-rbk="' + k + '" title="Type or paste your correction"' + dis + '>' + esc(v) + '</textarea>' +
+      '<select class="rbsug" data-rbsug="' + k + '" aria-label="Suggestions"' + dis + '><option value="">Suggestions…</option>' + (rbSug[k] || []).map((o, i) => '<option value="' + i + '" title="' + esc(o) + '">' + esc(short(o)) + '</option>').join('') + '</select></td>'; };
   $('rbRows').innerHTML = '<tr><th>Done</th><th>Episode ID</th><th>Task</th><th>Taken by</th>' + cats.map(c => '<th>' + esc(c.name) + '</th>').join('') + (S && S.notesCol > -1 ? '<th>' + esc(S.notesName || 'Notes') + '</th>' : '') + '<th>Status</th><th></th></tr>' + keys.map(l => {
     const list = groups[l].sort((a, b) => a.row - b.row), n = list.filter(rbReviewed).length;
     return '<tr class="rbhead"><td colspan="' + cols + '">' + esc(nameOf(l)) + ' <span class="muted small">' + list.length + ' taken · ' + n + ' reviewed</span></td></tr>' + list.map(it => {
@@ -1503,8 +1507,11 @@ function rbSaveState() {
     const sh = Q.setup.shifts.length ? Q.setup.shifts : ['core hours', 'extra hours']; $('rbShift').innerHTML = sh.map(s => '<option' + (s === last.shift ? ' selected' : '') + '>' + esc(s) + '</option>').join(''); }
   if (D && !$('rbRev').value) $('rbRev').value = D.today;
 }
+var rbSug = [];
 $('rbRows').addEventListener('change', e => {
-  const el = e.target;
+  let el = e.target;
+  // a suggestion fills the text area next to it, then is handled like typing it
+  if (el.dataset.rbsug != null) { const s = (rbSug[+el.dataset.rbsug] || [])[+el.value], ta = el.parentNode.querySelector('textarea.rbcat'); el.value = ''; if (s == null || !ta) return; ta.value = s; el = ta; }
   if (el.dataset.rbon) { rbDraftOf(el.dataset.rbon).on = el.checked; el.closest('tr').classList.toggle('ready', el.checked); rbSaveState(); return; }
   const ep = el.dataset.rbep, k = el.dataset.rbk; if (!ep || k == null) return;
   const d = rbDraftOf(ep);
