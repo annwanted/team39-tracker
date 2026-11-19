@@ -1427,7 +1427,7 @@ function renderRbInfo() {
   const nm = r => esc(nameOf(r.ldap).split(' ')[0]);
   // Live count per member for this work date, so a Release or someone else's pick shows at once.
   const live = {}, seen = new Set();
-  Object.values(RBD).forEach(doc => Object.values((doc && doc.items) || {}).forEach(it => { if (it.workDate === date && !seen.has(it.ep)) { seen.add(it.ep); live[it.ldap] = (live[it.ldap] || 0) + 1; } }));
+  Object.values(RBD).forEach(doc => Object.values((doc && doc.items) || {}).forEach(it => { if (it.workDate === date && it.by === meLdap && !seen.has(it.ep)) { seen.add(it.ep); live[it.ldap] = (live[it.ldap] || 0) + 1; } }));
   rbInfo.report.forEach(r => { r.have = live[r.ldap] || 0; });
   const none = rbInfo.report.filter(r => r.have < n && !r.worked), shortL = rbInfo.report.filter(r => r.have < n && r.worked), full = rbInfo.report.filter(r => r.have >= n);
   const lines = [];
@@ -1435,6 +1435,7 @@ function renderRbInfo() {
   if (shortL.length) lines.push('<b>Still short of ' + n + ':</b> ' + shortL.map(r => nm(r) + ' (' + r.have + ' of ' + n + ')').join(', ') + '. Pick again to top them up once they have more worked episodes.');
   if (full.length) lines.push('<b>Complete (' + n + '/' + n + '):</b> ' + full.map(nm).join(', '));
   if (rbInfo.n !== n) lines.push('Episodes per member changed to ' + n + '. Pick again to top everyone up to it.');
+  if (lines.length) lines.unshift('<span class="small">Your own picks for ' + esc(longDate(date)) + ' (' + esc(nameOf(meLdap).split(' ')[0]) + '). Others’ picks don’t count toward your number.</span>');
   box.innerHTML = lines.map(l => '<div>' + l + '</div>').join('');
   box.hidden = !lines.length;
 }
@@ -1616,9 +1617,10 @@ $('rbPick').onclick = async () => {
     const reviewed = new Set(Q.rows.map(x => x.ep)), today = D.today;
     const res = await rbWithDay(today, items => {
       const earlier = rbTakenAll(), picked = [], report = [];
-      // Episodes already taken for this work date, per member: today's fresh record plus earlier days' records.
+      // Episodes I already took for this work date, per member (today's fresh record plus earlier days'). Other pickers' picks don't count toward my number,
+      // but an episode anyone has taken is still never taken twice (seen covers everyone's).
       const have = {}, seen = new Set();
-      const count = it => { if (it && it.workDate === date && !seen.has(it.ep)) { seen.add(it.ep); have[it.ldap] = (have[it.ldap] || 0) + 1; } };
+      const count = it => { if (it && it.workDate === date && !seen.has(it.ep)) { seen.add(it.ep); if (it.by === meLdap) have[it.ldap] = (have[it.ldap] || 0) + 1; } };
       Object.values(items).forEach(count);
       Object.entries(RBD).forEach(([d, doc]) => { if (d !== today) Object.values((doc && doc.items) || {}).forEach(count); });
       people.forEach(m => {
