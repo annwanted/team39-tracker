@@ -1496,10 +1496,25 @@ function renderBucket() {
   rbSaveState();
 }
 /* ----- reviewing inside the bucket: drafts live in this browser until saved to the Reviewers Sheet ----- */
-const rbDrafts = {}; let rbStale = false, rbSaving = false;
-function rbDraftOf(ep) { if (!rbDrafts[ep]) rbDrafts[ep] = { cats: Q ? Q.setup.cats.map(() => Q.setup.perfect) : [], notes: '', on: false }; const d = rbDrafts[ep]; if (Q && d.cats.length !== Q.setup.cats.length) d.cats = Q.setup.cats.map(() => Q.setup.perfect); return d; }
+const rbDrafts = {}; let rbStale = false, rbSaving = false, rbDraftsFor = null;
+/** Unsaved reviews are kept in this browser (per workbook), so a reload or a sign-in renewal doesn't lose them. Drafts older than 14 days are dropped. */
+function rbDraftKey() { return 't39rbDrafts|' + sheetKey; }
+function rbLoadDrafts() {
+  if (rbDraftsFor === sheetKey) return; rbDraftsFor = sheetKey;
+  Object.keys(rbDrafts).forEach(k => delete rbDrafts[k]);
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem(rbDraftKey()) || '{}') || {}; } catch (e) {}
+  const old = Date.now() - 14 * 864e5;
+  Object.entries(saved).forEach(([ep, d]) => { if (d && Array.isArray(d.cats) && (d.t || 0) > old) rbDrafts[ep] = { cats: d.cats, notes: d.notes || '', on: !!d.on, t: d.t }; });
+}
+function rbStoreDrafts() {
+  if (rbDraftsFor !== sheetKey) return;
+  const keep = {};
+  Object.entries(rbDrafts).forEach(([ep, d]) => { if (d.t && (d.on || d.notes || d.cats.some(v => !isPerfect(v)))) keep[ep] = d; });
+  try { localStorage.setItem(rbDraftKey(), JSON.stringify(keep)); } catch (e) {}
+}
+function rbDraftOf(ep) { rbLoadDrafts(); if (!rbDrafts[ep]) rbDrafts[ep] = { cats: Q ? Q.setup.cats.map(() => Q.setup.perfect) : [], notes: '', on: false }; const d = rbDrafts[ep]; if (Q && d.cats.length !== Q.setup.cats.length) d.cats = Q.setup.cats.map(() => Q.setup.perfect); return d; }
 /** Ticked, unreviewed rows of the day shown. */
-function rbReadyItems() { const day = $('rbDay').value || (D && D.today), doc = RBD[day]; return Object.values((doc && doc.items) || {}).filter(it => rbDrafts[it.ep] && rbDrafts[it.ep].on && !rbReviewed(it)); }
+function rbReadyItems() { rbLoadDrafts(); const day = $('rbDay').value || (D && D.today), doc = RBD[day]; return Object.values((doc && doc.items) || {}).filter(it => rbDrafts[it.ep] && rbDrafts[it.ep].on && !rbReviewed(it)); }
 function rbSaveState() {
   const n = rbReadyItems().length, ok = canPick(meLdap) && !!Q;
   $('rbAllOn').hidden = $('rbAllOff').hidden = !canPick(meLdap);
@@ -1508,26 +1523,30 @@ function rbSaveState() {
   if (Q && !$('rbShift').options.length) { let last = {}; try { last = JSON.parse(localStorage.getItem('t39qaLast') || '{}'); } catch (e) {}
     const sh = Q.setup.shifts.length ? Q.setup.shifts : ['core hours', 'extra hours']; $('rbShift').innerHTML = sh.map(s => '<option' + (s === last.shift ? ' selected' : '') + '>' + esc(s) + '</option>').join(''); }
   if (D && !$('rbRev').value) $('rbRev').value = D.today;
+  rbStoreDrafts();
 }
 /** Select all / Deselect all: ticks or unticks Done on every unreviewed episode shown (follows the Taken on day and Taken by filter). Edits are kept either way. */
 function rbTickAll(on) {
   if (!canPick(meLdap)) return;
   const boxes = [...$('rbRows').querySelectorAll('input[data-rbon]:not(:disabled)')];
   if (!boxes.length) return toast('No episodes to review on this list');
-  boxes.forEach(cb => { cb.checked = on; rbDraftOf(cb.dataset.rbon).on = on; cb.closest('tr').classList.toggle('ready', on); });
+  boxes.forEach(cb => { cb.checked = on; const d = rbDraftOf(cb.dataset.rbon); d.on = on; d.t = Date.now(); cb.closest('tr').classList.toggle('ready', on); });
   rbSaveState(); toast((on ? 'Selected ' : 'Deselected ') + boxes.length + ' episode' + (boxes.length === 1 ? '' : 's'));
 }
 $('rbAllOn').onclick = () => rbTickAll(true); $('rbAllOff').onclick = () => rbTickAll(false);
-$('rbRows').addEventListener('change', e => {
+function rbEdit(e, live) {
   const el = e.target;
-  if (el.dataset.rbon) { rbDraftOf(el.dataset.rbon).on = el.checked; el.closest('tr').classList.toggle('ready', el.checked); rbSaveState(); return; }
+  if (el.dataset.rbon) { if (live) return; const d0 = rbDraftOf(el.dataset.rbon); d0.on = el.checked; d0.t = Date.now(); el.closest('tr').classList.toggle('ready', el.checked); rbSaveState(); return; }
   const ep = el.dataset.rbep, k = el.dataset.rbk; if (!ep || k == null) return;
-  const d = rbDraftOf(ep);
-  if (k === 'notes') d.notes = el.value.trim(); else { const v = el.value.trim() || Q.setup.perfect; if (!el.value.trim()) el.value = v; d.cats[+k] = v; el.classList.toggle('bad', !isPerfect(v)); }
+  const d = rbDraftOf(ep); d.t = Date.now();
+  if (k === 'notes') d.notes = el.value.trim(); else { const v = el.value.trim() || Q.setup.perfect; if (!live && !el.value.trim()) el.value = v; d.cats[+k] = v; el.classList.toggle('bad', !isPerfect(v)); }
   // editing a row means you're reviewing it: tick it so it is saved
   if (!d.on) { d.on = true; const cb = el.closest('tr').querySelector('[data-rbon]'); if (cb) cb.checked = true; el.closest('tr').classList.add('ready'); }
   rbSaveState();
-});
+}
+// every keystroke is kept (so a reload mid-typing loses nothing); leaving a box tidies it
+$('rbRows').addEventListener('change', e => rbEdit(e, false));
+$('rbRows').addEventListener('input', e => rbEdit(e, true));
 $('rbRows').addEventListener('focusout', () => setTimeout(() => { if (rbStale && !$('rbRows').contains(document.activeElement)) renderBucket(); }, 0));
 $('rbSave').onclick = async () => {
   if (!canPick(meLdap) || !Q || rbSaving) return;
