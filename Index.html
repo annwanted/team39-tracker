@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team 39 Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+/* Show any script error in the status line instead of leaving "Loading…" forever.
+   Note: never put a double slash inside a string in this file - the Apps Script sandbox
+   treats it as a comment and breaks the page. */
+window.addEventListener('error', function (e) {
+  var t = document.getElementById('syncText');
+  if (t) t.textContent = 'Page error: ' + e.message;
+});
+</script>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --ink:#16181d; --muted:#667085; --line:#e4e7ec; --soft:#f2f4f7;
+  --accent:#2f6fed; --accent-soft:#e8f0fe; --ok:#12805c; --ok-soft:#e3f5ee; --warn:#b54708; --warn-soft:#fef0e1;
+  --err:#c4320a; --err-soft:#fdeceb; --radius:12px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f1115; --panel:#171a21; --ink:#e7e9ee; --muted:#98a2b3; --line:#2a2f3a; --soft:#1e222b;
+  --accent:#6b9bff; --accent-soft:#1d2a45; --ok:#4cc79a; --ok-soft:#16302a; --warn:#f3a45c; --warn-soft:#3a2a17;
+  --err:#ff8a7a; --err-soft:#3d1f1c;
+}}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --panel:#171a21; --ink:#e7e9ee; --muted:#98a2b3; --line:#2a2f3a; --soft:#1e222b;
+  --accent:#6b9bff; --accent-soft:#1d2a45; --ok:#4cc79a; --ok-soft:#16302a; --warn:#f3a45c; --warn-soft:#3a2a17;
+  --err:#ff8a7a; --err-soft:#3d1f1c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,system-ui,sans-serif}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 24px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;font-weight:700}
+.sync{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.dot.busy{background:var(--warn);animation:p 1s infinite}.dot.err{background:var(--err)}
+@keyframes p{50%{opacity:.3}}
+.spacer{flex:1}
+nav{display:flex;gap:4px;padding:0 24px;background:var(--panel);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{border:0;background:none;padding:12px 14px;color:var(--muted);font:inherit;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+nav button.on{color:var(--ink);border-color:var(--accent)}
+.badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:var(--err-soft);color:var(--err);font-size:11px;font-weight:600;margin-left:4px}
+main{max-width:1380px;margin:0 auto;padding:20px 24px 60px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+.report{position:sticky;top:76px;margin-bottom:0}
+.report h2{font-size:15px;margin:0}
+.rep{font-variant-numeric:tabular-nums}
+.rep td{border:0;padding:3px 0;vertical-align:baseline}
+.rep td.v{text-align:right;font-weight:700;padding-right:10px;white-space:nowrap;width:1%}
+.rep tr.head td{font-weight:700;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.rep tr.ded td{color:var(--warn)}
+.rep tr.fb td{padding-top:8px;border-top:1px solid var(--line)}
+@media (max-width:1000px){.layout{grid-template-columns:minmax(0,1fr)}.report{position:static;order:-1}}
+section{display:none}section.on{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:8px;font:inherit;font-weight:500;cursor:pointer}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.sm{padding:4px 9px;font-size:12px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+a{color:var(--accent)}
+.muted{color:var(--muted)}.small{font-size:12px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.kpi b{display:block;font-size:22px;font-weight:700}
+.kpi span{color:var(--muted);font-size:12px}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:600;cursor:default;white-space:nowrap}
+th.sort{cursor:pointer}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto}
+.att{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.person{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.person .pmain{display:flex;gap:12px;align-items:center;cursor:pointer;user-select:none}
+.person.present{border-color:var(--ok);background:var(--ok-soft)}
+.person .pmain input{width:20px;height:20px;accent-color:var(--ok);flex:none}
+.person .ded{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted)}
+.person .ded label{display:flex;gap:4px;align-items:center}
+.person .ded input{width:54px;padding:2px 5px;font-size:12px}
+.person .who{flex:1;min-width:0}
+.person .who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9px;background:var(--soft);color:var(--muted)}
+.tag.off{background:var(--warn-soft);color:var(--warn)}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.sched input{width:110px}
+.sched input.off{color:var(--warn)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);border-radius:16px;padding:3px 10px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--panel)}
+.chip i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.chip.off{opacity:.45}
+.chartbox{position:relative;height:340px}
+.issue-group{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.issue-group summary{padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:center;list-style:none}
+.issue-group summary::-webkit-details-marker{display:none}
+.sev{font-size:11px;font-weight:600;padding:1px 8px;border-radius:9px;text-transform:uppercase}
+.sev.error{background:var(--err-soft);color:var(--err)}.sev.warn{background:var(--warn-soft);color:var(--warn)}.sev.info{background:var(--accent-soft);color:var(--accent)}
+.issue-group table{font-size:12px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;z-index:20}
+.toast.show{opacity:1}
+.demo{background:var(--warn-soft);color:var(--warn);padding:8px 24px;font-size:12px}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:12px 0}
+.qgrid label,.qblock{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+.qgrid .wide{grid-column:span 2}
+.qgrid input,.qgrid select,.qblock textarea{width:100%;font-size:14px}
+.qgrid select.bad{border-color:var(--warn);color:var(--warn)}
+.qblock{margin-bottom:12px}
+#qaRows td,#qaScores td{font-size:13px}
+#qaScores tr.pick{cursor:pointer}#qaScores tr.pick:hover td{background:var(--soft)}
+.ellip{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:640px){.qgrid .wide{grid-column:auto}}
+@media (max-width:640px){header,nav,main{padding-left:16px;padding-right:16px}.chartbox{height:260px}}
+</style>
+</head>
+<body>
+<div id="demo" class="demo" hidden>Preview mode — showing sample data. Deploy inside your Google Sheet to see and edit the real team data.</div>
+<header>
+  <h1>Team 39 Tracker</h1>
+  <div class="sync"><span id="dot" class="dot busy"></span><span id="syncText">Loading from sheet…</span></div>
+  <div class="spacer"></div>
+  <span id="mirrorText" class="muted small"></span>
+  <a id="sheetLink" class="btn sm" target="_blank" href="#">Open sheet</a>
+  <a id="mirrorLink" class="btn sm" target="_blank" href="#" hidden>Synced sheet</a>
+  <button class="btn sm" id="syncBtn" onclick="syncNow()">Create synced sheet</button>
+  <button class="btn sm" onclick="load(true)">Refresh</button>
+</header>
+<nav id="tabs">
+  <button data-t="att" class="on">Attendance</button>
+  <button data-t="sched">Schedules</button>
+  <button data-t="perf">Performance</button>
+  <button data-t="qa">QA reviews</button>
+  <button data-t="checks">Data checks <span id="issueBadge" class="badge" hidden></span></button>
+</nav>
+<main><div class="layout"><div class="content">
+
+<!-- ATTENDANCE -->
+<section id="att" class="on">
+  <div class="card row">
+    <label>Date <input type="date" id="attDate"></label>
+    <button class="btn sm" onclick="shiftDay(-1)">‹ Prev</button>
+    <button class="btn sm" onclick="shiftDay(1)">Next ›</button>
+    <button class="btn sm" onclick="setToday()">Today</button>
+    <div class="spacer"></div>
+    <button class="btn sm" onclick="markAll(true)">Mark all present</button>
+    <button class="btn sm" onclick="markAll(false)">Clear all</button>
+  </div>
+  <div class="kpis" id="attKpis"></div>
+  <div class="att" id="attList"></div>
+</section>
+
+<!-- SCHEDULES -->
+<section id="sched">
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <b>Shifts</b><span class="muted small">Edits Time In / Break / Time Out in the <b>Main Tracker</b> tab. Use times like <code>3:00 PM</code> and a break like <code>7:00 PM - 7:30 PM</code>. Saves when you leave the box.</span>
+    </div>
+    <div class="tablewrap"><table class="sched" id="schedTable"></table></div>
+  </div>
+</section>
+
+<!-- PERFORMANCE -->
+<section id="perf">
+  <div class="card">
+    <div class="row">
+      <label>From <input type="date" id="pFrom"></label>
+      <label>To <input type="date" id="pTo"></label>
+      <button class="btn sm" data-r="7">7 days</button>
+      <button class="btn sm" data-r="30">30 days</button>
+      <button class="btn sm" data-r="90">90 days</button>
+      <button class="btn sm" data-r="all">All time</button>
+      <div class="spacer"></div>
+      <label>Show <select id="pMetric">
+        <option value="ep">Episodes done (DATA)</option>
+        <option value="hrs">Hours logged</option>
+        <option value="rate">Episodes per hour</option>
+        <option value="qa">QA / review tasks done</option>
+        <option value="score">QA score (%)</option>
+      </select></label>
+      <label>By <select id="pGroup"><option value="day">Day</option><option value="week" selected>Week</option><option value="month">Month</option></select></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn sm" onclick="setAllMembers(true)">All</button>
+      <button class="btn sm" onclick="setAllMembers(false)">None</button>
+      <label class="small"><input type="checkbox" id="pTeam"> Team total only</label>
+    </div>
+    <div class="chips" id="pChips" style="margin-top:8px"></div>
+  </div>
+  <div class="kpis" id="perfKpis"></div>
+  <div class="card"><b id="perfTitle">Performance</b><div class="chartbox" style="margin-top:8px"><canvas id="perfChart"></canvas></div></div>
+  <div class="card"><b>QA scores</b> <span class="muted small">— Perfect ÷ Sampled from the Reviewers Sheet (same formula as Data QAd), same period and members</span><div class="chartbox" style="margin-top:8px"><canvas id="qaChart"></canvas></div></div>
+  <div class="card"><b>Per member</b><div class="tablewrap" style="margin-top:8px"><table id="perfTable"></table></div></div>
+</section>
+
+<!-- QA REVIEWS (reads and writes the Reviewers Sheet) -->
+<section id="qa">
+  <div class="card row">
+    <label>From <input type="date" id="qFrom"></label>
+    <label>To <input type="date" id="qTo"></label>
+    <button class="btn sm" onclick="qaRange(0)">Today</button>
+    <button class="btn sm" onclick="qaRange(6)">7 days</button>
+    <button class="btn sm" onclick="qaRange(29)">30 days</button>
+    <label>Annotator <select id="qWho" onchange="renderQA()"><option value="">Everyone</option></select></label>
+    <button class="btn sm" onclick="loadReviews(true)">Reload</button>
+    <div class="spacer"></div>
+    <button class="btn primary" onclick="qaOpen(null)">+ Log a review</button>
+  </div>
+  <div class="card" id="qaForm" hidden></div>
+  <div class="card"><b>Data QA scores</b> <span class="muted small">— for the dates above. QA score = perfect categories ÷ categories sampled. Click a person to filter.</span>
+    <div class="tablewrap" style="margin-top:8px"><table id="qaScores"></table></div></div>
+  <div class="card"><b>Reviewed episodes</b> <span class="muted small" id="qaCount"></span>
+    <div class="tablewrap" style="margin-top:8px"><table id="qaRows"></table></div></div>
+</section>
+
+<!-- CHECKS -->
+<section id="checks">
+  <div class="card">
+    <div class="row">
+      <div><b>Data checks</b><div class="muted small">Problems found in every member tab and in Team Details. Nothing changes until you tick a fix and press Apply.</div></div>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="applyFixes()">Apply selected fixes</button>
+    </div>
+  </div>
+  <div id="checkList"></div>
+</section>
+</div>
+
+<!-- DAILY REPORT (side panel) -->
+<aside class="card report">
+  <div class="row"><h2>Daily report</h2><div class="spacer"></div><button class="btn sm" onclick="copyReport()">Copy</button></div>
+  <div class="row" style="margin:10px 0;gap:6px">
+    <button class="btn sm" onclick="shiftDay(-1)" aria-label="Previous day">‹</button>
+    <input type="date" id="repDate" style="flex:1;min-width:0">
+    <button class="btn sm" onclick="shiftDay(1)" aria-label="Next day">›</button>
+  </div>
+  <table class="rep" id="repTable"></table>
+  <div class="muted small" id="repNote" style="margin-top:10px"></div>
+</aside>
+</div></main>
+<div class="toast" id="toast"></div>
+
+<script>
+const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const PALETTE=['#2f6fed','#e5484d','#12a594','#f76b15','#8e4ec6','#0090ff','#d6409f','#46a758','#ad7f58','#5b5bd6','#e54666','#29a383','#ffb224','#7c66dc','#3e63dd','#b8865d','#00a2c7','#a18072'];
+let D=null; let selected=new Set(); let charts={};
+const LIVE = typeof google!=='undefined' && google.script && google.script.run;
+
+/* ---------- server bridge ---------- */
+function call(fn,...args){
+  if(!LIVE) return Promise.resolve(MOCK[fn]?MOCK[fn](...args):null);
+  return new Promise((res,rej)=>google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](...args));
+}
+function sync(state,text){const d=document.getElementById('dot');d.className='dot'+(state==='busy'?' busy':state==='err'?' err':'');document.getElementById('syncText').textContent=text}
+function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2200)}
+
+async function load(force){
+  sync('busy','Loading from sheet…');
+  try{
+    D=await call('getData',!!force);
+    // Team = people in Team Details (extra tabs only show up in Data checks)
+    D.allRoster=D.roster;
+    if(D.roster.some(m=>m.inTeamDetails)) D.roster=D.roster.filter(m=>m.inTeamDetails);
+    D.qa=[];for(const l in (D.qaDaily||{}))for(const d in D.qaDaily[l]){const q=D.qaDaily[l][d];D.qa.push({date:d,ldap:l,eps:q.eps,sam:q.sam,ok:q.ok,err:q.err||0})}
+    if(!selected.size) D.roster.forEach(m=>selected.add(m.ldap));
+    document.getElementById('sheetLink').href=D.sheetUrl||'#';
+    renderMirror();
+    renderAll();
+    sync('ok','Synced '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}));
+  }catch(e){sync('err','Could not load: '+(e.message||e))}
+}
+/* ---------- synced sheet (separate spreadsheet, refreshed every 30 minutes by a trigger) ---------- */
+function renderMirror(){
+  const m=D.mirror||{},link=document.getElementById('mirrorLink'),btn=document.getElementById('syncBtn');
+  link.hidden=!m.url;link.href=m.url||'#';
+  btn.textContent=!m.url?'Create synced sheet':m.auto?'Sync sheet now':'Turn on auto-sync';
+  const t=m.synced?new Date(m.synced).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  document.getElementById('mirrorText').textContent=!m.url?'':(m.auto?'Synced sheet updates every '+(m.every||30)+' min':'Auto-sync is off')+(t?' · last '+t:'');
+}
+async function syncNow(){
+  const b=document.getElementById('syncBtn');b.disabled=true;sync('busy','Updating the synced sheet (about a minute)…');
+  try{const r=await call(D.mirror&&D.mirror.auto?'syncMirror':'setupAutoSync');D.mirror=r.mirror;renderMirror();
+    sync('ok','Synced sheet updated: '+r.members+' members, '+r.days+' days');toast('Synced sheet updated')}
+  catch(e){sync('err','Sync failed: '+(e.message||e));toast('Sync failed — '+(e.message||e))}
+  finally{b.disabled=false}
+}
+async function save(fn,args,okMsg){
+  sync('busy','Saving…');
+  try{await call(fn,...args);sync('ok','Saved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}));if(okMsg)toast(okMsg);return true}
+  catch(e){sync('err','Save failed: '+(e.message||e));toast('Save failed — '+(e.message||e));return false}
+}
+
+/* ---------- helpers ---------- */
+const iso=d=>d.toISOString().slice(0,10);
+const parseISO=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
+const addDays=(s,n)=>{const d=parseISO(s);d.setUTCDate(d.getUTCDate()+n);return iso(d)};
+const dow=s=>(parseISO(s).getUTCDay()+6)%7; // Mon=0
+const nameOf=l=>((D.allRoster||D.roster).find(m=>m.ldap===l)||{name:l||'—'}).name;
+const shiftText=l=>{const s=D.schedule[l];return s&&(s.timeIn||s.timeOut)?`${s.timeIn||'?'} – ${s.timeOut||'?'}`:''};
+const colorOf=l=>PALETTE[D.roster.findIndex(m=>m.ldap===l)%PALETTE.length];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=(n,d=0)=>n==null||isNaN(n)?'—':Number(n).toLocaleString(undefined,{maximumFractionDigits:d,minimumFractionDigits:d});
+
+/* ---------- tabs ---------- */
+document.getElementById('tabs').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===b.dataset.t));
+  if(b.dataset.t==='perf')renderPerf();
+  if(b.dataset.t==='qa'&&!QA)loadReviews();
+};
+
+function renderAll(){renderAttendance();renderSchedule();initPerf();renderPerf();renderChecks();initQA()}
+
+/* ---------- attendance ---------- */
+const attDate=document.getElementById('attDate');
+function setToday(){attDate.value=D.today;renderAttendance()}
+function shiftDay(n){attDate.value=addDays(attDate.value,n);renderAttendance()}
+attDate.onchange=renderAttendance;
+function renderAttendance(){
+  if(!attDate.value)attDate.value=D.today;
+  const d=attDate.value, day=DAYS[dow(d)], rec=D.attendance[d]||{}, ded=(D.deductions||{})[d]||{};
+  document.getElementById('repDate').value=d;
+  let present=0,sched=0;
+  const html=D.roster.map(m=>{
+    const shift=shiftText(m.ldap);
+    const on=rec[m.ldap]===true; if(on)present++; if(shift)sched++;
+    const act=(D.daily[m.ldap]||{})[d]; const tasks=act?act.ep+act.qa:0;
+    const x=ded[m.ldap]||{};
+    return `<div class="person ${on?'present':''}" data-l="${m.ldap}">
+      <label class="pmain">
+        <input type="checkbox" ${on?'checked':''} onchange="toggleAtt('${m.ldap}',this.checked,this)">
+        <div class="who"><b>${esc(m.name)}</b><span class="muted small">${esc(m.ldap)}</span></div>
+        <div style="text-align:right">
+          <div><span class="tag ${shift?'':'off'}">${shift?esc(shift):'not in Main Tracker'}</span></div>
+          ${tasks?`<div class="small" style="margin-top:3px"><span class="tag ok">${tasks} task${tasks===1?'':'s'} logged</span></div>`:''}
+        </div></label>
+      <div class="ded" title="Deductive hours for this day - subtracted from working hours">
+        <label>Coaching h <input type="number" min="0" max="12" step="0.25" inputmode="decimal" data-k="coach" value="${x.coach||''}" placeholder="0" onchange="dedChange(this)"></label>
+        <label>Reviews h <input type="number" min="0" max="12" step="0.25" inputmode="decimal" data-k="rev" value="${x.rev||''}" placeholder="0" onchange="dedChange(this)"></label>
+      </div></div>`}).join('');
+  document.getElementById('attList').innerHTML=html||'<div class="empty">No team members found in Team Details.</div>';
+  document.getElementById('attKpis').innerHTML=`
+    <div class="kpi"><b>${present} / ${D.roster.length}</b><span>Present on ${day} ${d}</span></div>
+    <div class="kpi"><b>${sched}</b><span>Have a shift in Main Tracker</span></div>
+    <div class="kpi"><b>${D.roster.filter(m=>((D.daily[m.ldap]||{})[d])).length}</b><span>Logged tasks this day</span></div>`;
+  renderReport();
+}
+async function dedChange(inp){
+  const card=inp.closest('.person'),ldap=card.dataset.l,d=attDate.value;
+  const get=k=>{const v=card.querySelector(`[data-k="${k}"]`).value.trim();return v===''?0:Number(v)};
+  const coach=get('coach'),rev=get('rev');
+  if([coach,rev].some(v=>isNaN(v)||v<0||v>12)){toast('Use hours between 0 and 12, e.g. 0.5');inp.focus();return}
+  ((D.deductions=D.deductions||{})[d]=D.deductions[d]||{})[ldap]={coach,rev};
+  renderReport();
+  await save('setDeduction',[d,ldap,coach,rev],'Deductive hours saved for '+nameOf(ldap));
+}
+
+/* ---------- daily report (side panel) ---------- */
+document.getElementById('repDate').onchange=e=>{if(e.target.value){attDate.value=e.target.value;renderAttendance()}};
+function tmin(s){const m=String(s||'').trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);if(!m)return null;
+  let h=+m[1];const mi=+(m[2]||0);if(m[3]){h=h%12;if(/pm/i.test(m[3]))h+=12}return h>23||mi>59?null:h*60+mi}
+/** Scheduled working hours from Main Tracker: Time Out − Time In − break (handles overnight shifts). */
+function shiftHours(l){
+  const s=D.schedule[l];if(!s)return 0;const a=tmin(s.timeIn),b=tmin(s.timeOut);if(a==null||b==null)return 0;
+  let len=(b-a+1440)%1440;const br=String(s.brk||'').split(/\s*[-–]\s*/);
+  if(br.length===2){const pm=/pm/i.test(br[1])&&!/am|pm/i.test(br[0])?' PM':'';const x=tmin(br[0]+pm),y=tmin(br[1]);if(x!=null&&y!=null)len-=(y-x+1440)%1440}
+  return Math.max(0,len)/60;
+}
+function dayReport(d){
+  const rec=D.attendance[d]||{},ded=(D.deductions||{})[d]||{};
+  const team=D.roster.filter(m=>rec[m.ldap]===true);
+  const basis=team.length?'marked present':'marked present (nobody is ticked yet, so annotators and working hours stay 0 until you tick attendance)';
+  let sched=0,dc=0,dr=0,ep=0,lab=0,rev=0;
+  team.forEach(m=>{sched+=shiftHours(m.ldap);const x=ded[m.ldap]||{};dc+=x.coach||0;dr+=x.rev||0});
+  D.roster.forEach(m=>{const a=(D.daily[m.ldap]||{})[d];if(a){ep+=a.ep;lab+=a.lab||0;rev+=a.qa}});
+  const work=Math.max(0,sched-dc-dr);
+  const qa=D.qa.filter(q=>q.date===d&&D.roster.some(m=>m.ldap===q.ldap)&&q.err>0);
+  const feedback=qa.length?'feedback: '+qa.map(q=>`${nameOf(q.ldap).split(' ')[0]} (${q.err} error${q.err===1?'':'s'})`).join(', '):'no feedback';
+  const per=(n)=>work?n/work:0;
+  return{d,basis,team:team.length,sched,dc,dr,work,ep,lab,rev,feedback,
+    lines:[[team.length,'annotator'],[ep,'total data qa'],[work.toFixed(2),'total working hours'],[per(ep).toFixed(2),'data qa per hour'],
+      [lab,'total text labels'],[per(lab).toFixed(2),'segments per hour'],[rev,'total reviews']]};
+}
+const longDate=d=>parseISO(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'});
+function renderReport(){
+  if(!D||!attDate.value)return;const r=dayReport(attDate.value);
+  document.getElementById('repTable').innerHTML=`<tr class="head"><td class="v">TEAM 39</td><td>${longDate(r.d)}</td></tr>`+
+    r.lines.map(([v,t])=>`<tr><td class="v">${esc(typeof v==='number'?fmt(v):v)}</td><td>${t}</td></tr>`).join('')+
+    `<tr class="ded"><td class="v">${fmt(r.dc+r.dr,2)}</td><td>deductive hours (coaching ${fmt(r.dc,2)}, reviews ${fmt(r.dr,2)})</td></tr>`+
+    `<tr class="fb"><td class="v"></td><td>${esc(r.feedback)}</td></tr>`;
+  document.getElementById('repNote').innerHTML=`Annotators = members ${r.basis}. Working hours = their scheduled shift minus break (${fmt(r.sched,2)} h) minus deductive hours. Feedback = QA errors in the Reviewers Sheet on this date.`;
+}
+function reportText(){const r=dayReport(attDate.value);
+  return [`TEAM 39 ${longDate(r.d)}`,...r.lines.map(([v,t])=>`${v} ${t}`),`${(r.dc+r.dr).toFixed(2)} deductive hours (coaching ${r.dc.toFixed(2)}, reviews ${r.dr.toFixed(2)})`,r.feedback].join('\n')}
+async function copyReport(){
+  const text=reportText();
+  try{await navigator.clipboard.writeText(text);toast('Report copied')}
+  catch(e){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();
+    let ok=false;try{ok=document.execCommand('copy')}catch(x){}t.remove();toast(ok?'Report copied':'Could not copy — select the report and copy it')}
+}
+async function toggleAtt(ldap,on,el){
+  const d=attDate.value;(D.attendance[d]=D.attendance[d]||{})[ldap]=on;
+  el&&el.closest('.person').classList.toggle('present',on);
+  renderAttendanceKpisOnly();
+  await save('setAttendance',[d,ldap,on,''],null);
+}
+function renderAttendanceKpisOnly(){renderAttendance()}
+async function markAll(on){
+  const d=attDate.value;
+  for(const m of D.roster){if(((D.attendance[d]||{})[m.ldap]===true)!==on)await toggleAtt(m.ldap,on)}
+  renderAttendance();
+}
+
+/* ---------- schedule ---------- */
+const TIME_RE=/^\d{1,2}(:\d{2})?\s*(am|pm)?$/i;
+const BREAK_RE=/^\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–]\s*\d{1,2}(:\d{2})?\s*(am|pm)?$/i;
+function renderSchedule(){
+  const head=`<tr><th>Member</th><th>Time In</th><th>Break</th><th>Time Out</th><th></th></tr>`;
+  const rows=D.roster.map(m=>{
+    const s=D.schedule[m.ldap];
+    if(!s)return `<tr><td><b>${esc(m.name)}</b><div class="muted small">${esc(m.ldap)}</div></td><td colspan="4" class="muted">Not listed in Main Tracker — add a row for this LDAP in the sheet</td></tr>`;
+    return `<tr data-l="${m.ldap}"><td><b>${esc(m.name)}</b><div class="muted small">${esc(m.ldap)}</div></td>
+      <td><input value="${esc(s.timeIn)}" data-k="timeIn" placeholder="3:00 PM" onchange="schedChange(this)"></td>
+      <td><input value="${esc(s.brk)}" data-k="brk" placeholder="7:00 PM - 7:30 PM" style="width:170px" onchange="schedChange(this)"></td>
+      <td><input value="${esc(s.timeOut)}" data-k="timeOut" placeholder="11:00 PM" onchange="schedChange(this)"></td>
+      <td><button class="btn sm" title="Copy this shift to everyone" onclick="copyToAll('${m.ldap}')">Apply to all</button></td></tr>`}).join('');
+  document.getElementById('schedTable').innerHTML=head+rows;
+}
+function readRow(ldap){const o={};document.querySelectorAll(`tr[data-l="${ldap}"] input`).forEach(i=>o[i.dataset.k]=i.value.trim());return o}
+async function schedChange(inp){
+  const v=inp.value.trim(),k=inp.dataset.k;
+  if(v&&!(k==='brk'?BREAK_RE:TIME_RE).test(v)){toast(k==='brk'?'Use a range like 7:00 PM - 7:30 PM':'Use a time like 3:00 PM');inp.focus();return}
+  const ldap=inp.closest('tr').dataset.l;const s=readRow(ldap);
+  if(await save('saveShift',[ldap,s.timeIn,s.brk,s.timeOut],'Shift saved for '+nameOf(ldap))){Object.assign(D.schedule[ldap],s);renderAttendance()}
+}
+async function copyToAll(ldap){
+  const s=readRow(ldap);
+  if(!confirm(`Set every member's shift to ${s.timeIn} – ${s.timeOut} (break ${s.brk}) in Main Tracker?`))return;
+  for(const m of D.roster){if(!D.schedule[m.ldap]||m.ldap===ldap)continue;
+    if(await save('saveShift',[m.ldap,s.timeIn,s.brk,s.timeOut]))Object.assign(D.schedule[m.ldap],s)}
+  renderSchedule();renderAttendance();toast('Shift applied to everyone');
+}
+
+/* ---------- performance ---------- */
+let perfInit=false;
+function allDates(){let min=null,max=null;for(const l in D.daily)for(const d in D.daily[l]){if(!min||d<min)min=d;if(!max||d>max)max=d}
+  D.qa.forEach(q=>{if(!min||q.date<min)min=q.date;if(!max||q.date>max)max=q.date});return[min||D.today,max||D.today]}
+function initPerf(){
+  if(!perfInit){
+    const[min]=allDates();document.getElementById('pFrom').value=addDays(D.today,-29)<min?min:addDays(D.today,-29);document.getElementById('pTo').value=D.today;
+    document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{const r=b.dataset.r;const[mn,mx]=allDates();
+      document.getElementById('pFrom').value=r==='all'?mn:addDays(D.today,-(+r-1));document.getElementById('pTo').value=r==='all'?(mx>D.today?mx:D.today):D.today;renderPerf()});
+    ['pFrom','pTo','pMetric','pGroup','pTeam'].forEach(id=>document.getElementById(id).onchange=renderPerf);
+    perfInit=true;
+  }
+  document.getElementById('pChips').innerHTML=D.roster.map(m=>`<span class="chip ${selected.has(m.ldap)?'':'off'}" data-l="${m.ldap}"><i style="background:${colorOf(m.ldap)}"></i>${esc(m.name)}</span>`).join('');
+  document.querySelectorAll('#pChips .chip').forEach(c=>c.onclick=()=>{const l=c.dataset.l;selected.has(l)?selected.delete(l):selected.add(l);c.classList.toggle('off');renderPerf()});
+}
+function setAllMembers(on){selected=new Set(on?D.roster.map(m=>m.ldap):[]);initPerf();renderPerf()}
+function bucket(d,g){if(g==='day')return d;if(g==='month')return d.slice(0,7);return addDays(d,-dow(d))}
+function bucketLabel(b,g){if(g==='month'){const[y,m]=b.split('-');return new Date(+y,+m-1,1).toLocaleDateString(undefined,{month:'short',year:'numeric'})}
+  const d=parseISO(b);const s=d.toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'});return g==='week'?'Wk of '+s:s}
+function buckets(from,to,g){const out=[];let d=from;while(d<=to){const b=bucket(d,g);if(out[out.length-1]!==b)out.push(b);d=addDays(d,1)}return out}
+
+function renderPerf(){
+  if(!D)return;
+  let from=document.getElementById('pFrom').value,to=document.getElementById('pTo').value;
+  if(from>to){[from,to]=[to,from];document.getElementById('pFrom').value=from;document.getElementById('pTo').value=to}
+  const metric=document.getElementById('pMetric').value,g=document.getElementById('pGroup').value,teamOnly=document.getElementById('pTeam').checked;
+  const members=D.roster.filter(m=>selected.has(m.ldap)).map(m=>m.ldap);
+  const bks=buckets(from,to,g);
+  const agg={}; // ldap -> bucket -> {ep,sec,qa}
+  const tot={}; // ldap -> totals
+  members.forEach(l=>{agg[l]={};tot[l]={ep:0,sec:0,qa:0,days:0,present:0,scheduled:0}});
+  members.forEach(l=>{for(const d in (D.daily[l]||{})){if(d<from||d>to)continue;const s=D.daily[l][d],b=bucket(d,g);
+    const a=agg[l][b]=agg[l][b]||{ep:0,sec:0,qa:0};a.ep+=s.ep;a.sec+=s.sec;a.qa+=s.qa;tot[l].ep+=s.ep;tot[l].sec+=s.sec;tot[l].qa+=s.qa;tot[l].days++}});
+  for(const d in D.attendance){if(d<from||d>to)continue;for(const l of members)if(D.attendance[d][l]===true)tot[l].present++}
+  // QA (Reviewers Sheet): score = Σ perfect / Σ sampled — same as Data QAd. No QA in a period = no score (not 0%).
+  const qaIn=D.qa.filter(q=>q.date>=from&&q.date<=to&&members.includes(q.ldap));
+  const qaAvg=(arr)=>{const s=arr.reduce((t,q)=>t+q.sam,0);return s?arr.reduce((t,q)=>t+q.ok,0)/s*100:null};
+  const qaFor=(ls,b)=>qaAvg(qaIn.filter(q=>ls.includes(q.ldap)&&bucket(q.date,g)===b));
+
+  const val=(a)=>!a?0:metric==='ep'?a.ep:metric==='qa'?a.qa:metric==='hrs'?a.sec/3600:(a.sec?a.ep/(a.sec/3600):null);
+  let datasets;
+  if(metric==='score'){
+    datasets=teamOnly?[{label:'Team',data:bks.map(b=>qaFor(members,b)),borderColor:'#2f6fed',backgroundColor:'#2f6fed33',fill:true,spanGaps:true,tension:.25}]
+      :members.map(l=>({label:nameOf(l),data:bks.map(b=>qaFor([l],b)),borderColor:colorOf(l),backgroundColor:colorOf(l),tension:.25,pointRadius:bks.length>40?0:3,spanGaps:true}));
+  }else if(teamOnly){
+    const series=bks.map(b=>{const s={ep:0,sec:0,qa:0};members.forEach(l=>{const a=agg[l][b];if(a){s.ep+=a.ep;s.sec+=a.sec;s.qa+=a.qa}});return val(s)});
+    datasets=[{label:'Team',data:series,borderColor:'#2f6fed',backgroundColor:'#2f6fed33',fill:true,tension:.25}];
+  }else datasets=members.map(l=>({label:nameOf(l),data:bks.map(b=>val(agg[l][b])),borderColor:colorOf(l),backgroundColor:colorOf(l),tension:.25,pointRadius:bks.length>40?0:3,spanGaps:true}));
+  const mLabel={ep:'Episodes done',hrs:'Hours logged',rate:'Episodes per hour',qa:'QA / review tasks done',score:'QA score'}[metric];
+  document.getElementById('perfTitle').textContent=`${mLabel} per ${g} · ${from} to ${to}`;
+  drawChart('perfChart',bks.map(b=>bucketLabel(b,g)),datasets,metric==='rate'||metric==='hrs'||metric==='score'?1:0,metric==='score'?{max:100,suffix:'%'}:null);
+
+  // QA chart
+  let qds;
+  if(teamOnly)qds=[{label:'Team',data:bks.map(b=>qaFor(members,b)),borderColor:'#12a594',backgroundColor:'#12a594',spanGaps:true,tension:.25}];
+  else qds=members.filter(l=>qaIn.some(q=>q.ldap===l)).map(l=>({label:nameOf(l),data:bks.map(b=>qaFor([l],b)),borderColor:colorOf(l),backgroundColor:colorOf(l),spanGaps:true,tension:.25}));
+  drawChart('qaChart',bks.map(b=>bucketLabel(b,g)),qds,1,{max:100,suffix:'%'},qaIn.length?null:'No QA reviews in the Reviewers Sheet for this period.');
+
+  // KPIs + table
+  const T=members.reduce((s,l)=>({ep:s.ep+tot[l].ep,sec:s.sec+tot[l].sec,qa:s.qa+tot[l].qa}),{ep:0,sec:0,qa:0});
+  document.getElementById('perfKpis').innerHTML=`
+    <div class="kpi"><b>${fmt(T.ep)}</b><span>Episodes done</span></div>
+    <div class="kpi"><b>${fmt(T.sec/3600,1)}</b><span>Hours logged</span></div>
+    <div class="kpi"><b>${fmt(T.sec?T.ep/(T.sec/3600):null,2)}</b><span>Episodes / hour</span></div>
+    <div class="kpi"><b>${fmt(T.qa)}</b><span>QA / review tasks done</span></div>
+    <div class="kpi"><b>${qaIn.length?fmt(qaAvg(qaIn),2)+'%':'—'}</b><span>QA score (${fmt(qaIn.reduce((s,q)=>s+q.eps,0))} episodes reviewed)</span></div>`;
+  const rows=members.map(l=>{const t=tot[l];const qs=qaIn.filter(q=>q.ldap===l);return{l,name:nameOf(l),days:t.days,present:t.present,ep:t.ep,hrs:t.sec/3600,rate:t.sec?t.ep/(t.sec/3600):null,qa:t.qa,reviewed:qs.reduce((s,q)=>s+q.eps,0),score:qaAvg(qs)}});
+  const sk=renderPerf.sort||'ep',dir=renderPerf.dir||-1;
+  rows.sort((a,b)=>((a[sk]??-1)>(b[sk]??-1)?1:(a[sk]??-1)<(b[sk]??-1)?-1:0)*dir);
+  const cols=[['name','Member'],['days','Active days'],['present','Days marked present'],['ep','Episodes'],['hrs','Hours'],['rate','Ep / hr'],['qa','QA / review tasks'],['reviewed','Episodes QA-ed'],['score','QA score']];
+  document.getElementById('perfTable').innerHTML=`<tr>${cols.map(([k,t])=>`<th class="sort ${k!=='name'?'num':''}" onclick="sortPerf('${k}')">${t}${sk===k?(dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr>`+
+    rows.map(r=>`<tr><td style="white-space:nowrap"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${colorOf(r.l)};margin-right:6px"></i>${esc(r.name)}</td>
+      <td class="num">${r.days}</td><td class="num">${r.present}</td><td class="num">${fmt(r.ep)}</td><td class="num">${fmt(r.hrs,1)}</td><td class="num">${fmt(r.rate,2)}</td><td class="num">${fmt(r.qa)}</td><td class="num">${fmt(r.reviewed)}</td><td class="num">${r.score==null?'—':fmt(r.score,2)+'%'}</td></tr>`).join('');
+}
+function sortPerf(k){renderPerf.dir=renderPerf.sort===k?-(renderPerf.dir||-1):-1;renderPerf.sort=k;renderPerf()}
+function drawChart(id,labels,datasets,dec,axis,emptyMsg){
+  if(typeof Chart==='undefined')return;
+  const css=getComputedStyle(document.documentElement);const ink=css.getPropertyValue('--muted').trim(),grid=css.getPropertyValue('--line').trim();
+  if(charts[id])charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),{type:'line',data:{labels,datasets},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom',labels:{color:ink,boxWidth:10,usePointStyle:true}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y==null?'—':fmt(c.parsed.y,dec)}${axis&&axis.suffix||''}`}},
+        title:{display:!!emptyMsg,text:emptyMsg||'',color:ink,font:{weight:'normal'}}},
+      scales:{x:{ticks:{color:ink,maxRotation:0,autoSkip:true},grid:{display:false}},
+        y:{beginAtZero:!axis,min:axis&&axis.min,max:axis&&axis.max,ticks:{color:ink,callback:v=>v+(axis&&axis.suffix||'')},grid:{color:grid}}}}});
+}
+
+
+/* ---------- data checks ---------- */
+function renderChecks(){
+  const groups={};
+  D.issues.forEach((it,i)=>{const k=it.sev+'|'+it.problem.replace(/^\d+ /,'N ').replace(/\(.*\)/,'').trim();(groups[k]=groups[k]||[]).push({...it,i})});
+  const order={error:0,warn:1,info:2};
+  const keys=Object.keys(groups).sort((a,b)=>order[a.split('|')[0]]-order[b.split('|')[0]]||groups[b].length-groups[a].length);
+  const total=Object.values(D.issueCounts||{}).reduce((s,n)=>s+n,0)||D.issues.length;
+  const badge=document.getElementById('issueBadge');badge.hidden=!total;badge.textContent=total>999?'999+':total;
+  document.getElementById('checkList').innerHTML=keys.length?keys.map(k=>{
+    const [sev]=k.split('|');const list=groups[k];const fixable=list.filter(x=>x.fix);
+    const countKey=Object.keys(D.issueCounts||{}).find(c=>c===sev+'|'+list[0].problem.replace(/\(.*\)/,'').trim());
+    const n=countKey?D.issueCounts[countKey]:list.length;
+    const title=list[0].problem.replace(/^\d+ rows/,'Rows').replace(/\(.*\)/,'').trim();
+    return `<details class="issue-group card" style="padding:0">
+      <summary><span class="sev ${sev}">${sev}</span><b style="flex:1">${esc(title)}</b><span class="muted small">${fmt(n)} found${n>list.length?` · showing ${list.length}`:''}</span></summary>
+      <div class="tablewrap"><table><tr>${fixable.length?'<th>Fix</th>':''}<th>Member</th><th>Tab</th><th>Cell</th><th>Value / detail</th></tr>
+      ${list.map(x=>`<tr>${fixable.length?`<td>${x.fix?`<label class="small"><input type="checkbox" class="fixbox" data-i="${x.i}"> ${esc(x.fix.label||('Set to '+x.fix.value))}</label>`:''}</td>`:''}
+        <td>${esc(nameOf(x.ldap))}</td><td>${esc(x.tab)}</td><td>${esc((x.col||'')+(x.row||''))}</td><td class="muted">${esc(x.problem.match(/^\d/)?x.problem:x.value)}</td></tr>`).join('')}</table></div></details>`}).join('')
+    :'<div class="card empty">No problems found. 🎉</div>';
+}
+async function applyFixes(){
+  const picked=[...document.querySelectorAll('.fixbox:checked')].map(b=>D.issues[+b.dataset.i].fix);
+  if(!picked.length)return toast('Tick at least one fix first');
+  if(!confirm(`Apply ${picked.length} fix(es) to the Google Sheet? You can undo with File → Version history in Sheets.`))return;
+  if(await save('applyFixes',[picked],picked.length+' fix(es) applied'))load(true);
+}
+
+/* ---------- QA reviews (Reviewers Sheet) ---------- */
+let QA=null, qaEdit=null;
+const qFrom=document.getElementById('qFrom'), qTo=document.getElementById('qTo');
+qFrom.onchange=qTo.onchange=()=>loadReviews();
+function initQA(){
+  const sel=document.getElementById('qWho'),cur=sel.value;
+  sel.innerHTML='<option value="">Everyone</option>'+D.roster.map(m=>`<option value="${esc(m.ldap)}">${esc(m.name)}</option>`).join('');
+  sel.value=cur;
+  if(!qTo.value){qTo.value=D.today;qFrom.value=addDays(D.today,-6)}
+}
+function qaRange(n){qTo.value=D.today;qFrom.value=addDays(D.today,-n);loadReviews()}
+async function loadReviews(force){
+  if(!D)return;
+  document.getElementById('qaRows').innerHTML='<tr><td class="empty">Loading reviews from the Reviewers Sheet…</td></tr>';
+  try{QA=await call('getReviews',qFrom.value,qTo.value,!!force);renderQA()}
+  catch(e){document.getElementById('qaRows').innerHTML=`<tr><td class="empty">Could not load reviews: ${esc(e.message||e)}</td></tr>`}
+}
+const isPerfect=v=>String(v||'').trim().toLowerCase()===String(QA.setup.perfect||'').toLowerCase();
+function renderQA(){
+  if(!QA)return;
+  const S=QA.setup, who=document.getElementById('qWho').value;
+  const rows=QA.rows.filter(r=>!who||r.ldap===who).sort((a,b)=>(b.dRev||b.dEval||'').localeCompare(a.dRev||a.dEval||'')||b.row-a.row);
+  // scores per annotator
+  const by={}, tot={eps:0,tasks:new Set(),sam:0,ok:0,fb:0,cat:S.cats.map(()=>0)};
+  rows.forEach(r=>{
+    const s=by[r.ldap]||(by[r.ldap]={eps:0,tasks:new Set(),sam:0,ok:0,fb:0,cat:S.cats.map(()=>0)});
+    [s,tot].forEach(x=>{x.eps++;x.tasks.add(r.task);x.sam+=r.sam;x.ok+=r.ok;if(r.err>0)x.fb++;r.cats.forEach((v,k)=>{if(isPerfect(v))x.cat[k]++})});
+  });
+  const people=Object.keys(by).sort((a,b)=>nameOf(a).localeCompare(nameOf(b)));
+  const pct=s=>s.sam?fmt(100*s.ok/s.sam,1)+'%':'—';
+  const line=(label,s,l)=>`<tr${l?` class="pick" data-l="${esc(l)}"`:''}><td>${label}</td><td class="num">${s.eps}</td><td class="num">${s.tasks.size}</td><td class="num">${fmt(s.sam)}</td><td class="num">${fmt(s.ok)}</td>
+    <td class="num">${s.fb}</td><td class="num">${s.eps-s.fb}</td><td class="num"><b>${pct(s)}</b></td>${s.cat.map(n=>`<td class="num">${n} / ${s.eps}</td>`).join('')}</tr>`;
+  document.getElementById('qaScores').innerHTML=people.length?
+    `<tr><th>Annotator</th><th class="num">Episodes sampled</th><th class="num">Unique tasks</th><th class="num">Categories sampled</th><th class="num">Perfect</th><th class="num">With feedback</th><th class="num">No feedback</th><th class="num">QA score</th>${S.cats.map(c=>`<th class="num">${esc(c.name)} ok</th>`).join('')}</tr>`+
+    people.map(l=>line(esc(nameOf(l)),by[l],l)).join('')+(people.length>1?line('<b>Team</b>',tot):'')
+    :'<tr><td class="empty">No reviews in this period.</td></tr>';
+  document.querySelectorAll('#qaScores tr.pick').forEach(tr=>tr.onclick=()=>{const s=document.getElementById('qWho');s.value=s.value===tr.dataset.l?'':tr.dataset.l;renderQA()});
+  // review list
+  const shown=rows.slice(0,400);
+  document.getElementById('qaCount').textContent=`— ${rows.length} in this period${rows.length>shown.length?', showing the newest 400':''}`;
+  document.getElementById('qaRows').innerHTML=rows.length?
+    `<tr><th>Date reviewed</th><th>Annotator</th><th>Episode ID</th><th>Task</th><th>Reviewer</th>${S.cats.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th class="num">Score</th><th>Notes</th><th></th></tr>`+
+    shown.map(r=>`<tr><td>${esc(r.dRev||r.dEval)}</td><td>${esc(nameOf(r.ldap))}</td><td class="ellip" title="${esc(r.ep)}">${esc(r.ep)}</td><td class="ellip" title="${esc(r.task)}">${esc(r.task)}</td><td>${esc(r.reviewer)}</td>
+      ${r.cats.map(v=>`<td>${isPerfect(v)?'<span class="tag ok">✓</span>':`<span class="tag off">${esc(v||'—')}</span>`}</td>`).join('')}
+      <td class="num">${fmt(r.ok)} / ${fmt(r.sam)}</td><td class="ellip small" title="${esc(r.notes)}">${esc(r.notes)}</td><td><button class="btn sm" onclick="qaOpen(${r.row})">Edit</button></td></tr>`).join('')
+    :'<tr><td class="empty">No reviews in this period. Use “+ Log a review” to add one.</td></tr>';
+}
+function pickField(id,label,options,value,cls){
+  const opts=options.slice();if(value&&!opts.includes(value))opts.unshift(value);
+  if(opts.length)return `<label class="${cls||''}">${label}<select id="${id}"><option value=""></option>${opts.map(o=>`<option${o===value?' selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
+  return `<label class="${cls||''}">${label}<input id="${id}" value="${esc(value||'')}"></label>`;
+}
+function qaOpen(row){
+  if(!QA)return toast('Reviews are still loading');
+  const S=QA.setup, r=row?QA.rows.find(x=>x.row===row):null; qaEdit=r;
+  let last={};try{last=JSON.parse(localStorage.getItem('qaLast')||'{}')}catch(e){}
+  const v=r||{ldap:document.getElementById('qWho').value,ep:'',task:'',dEval:D.today,dRev:D.today,reviewer:last.reviewer||'',shift:last.shift||(S.shifts||[])[0]||'',cats:S.cats.map(()=>S.perfect),notes:''};
+  const reviewers=(S.reviewers&&S.reviewers.length)?S.reviewers:D.roster.map(m=>m.ldap);
+  const seen=k=>[...new Set([S.perfect,...QA.rows.map(x=>x.cats[k]).filter(Boolean)])];
+  const f=document.getElementById('qaForm');
+  f.innerHTML=`<div class="row"><b>${r?'Edit review (sheet row '+r.row+')':'Log a review'}</b><div class="spacer"></div><span class="tag" id="qaPreview"></span></div>
+    <div class="qgrid">
+      <label>Annotator<select id="fLdap"><option value=""></option>${D.roster.map(m=>`<option value="${esc(m.ldap)}"${m.ldap===v.ldap?' selected':''}>${esc(m.name)}</option>`).join('')}</select></label>
+      <label class="wide">Episode ID<input id="fEp" value="${esc(v.ep)}" placeholder="2026-11-14-082742Z-h2_0520-…"></label>
+      <label class="wide">Task name<input id="fTask" value="${esc(v.task)}"></label>
+      <label>Date evaluated<input type="date" id="fEval" value="${esc(v.dEval)}"></label>
+      <label>Date reviewed<input type="date" id="fRev" value="${esc(v.dRev)}"></label>
+      ${pickField('fReviewer','Reviewer LDAP',reviewers,v.reviewer)}
+      ${pickField('fShift','Shift',S.shifts||[],v.shift)}
+    </div>
+    <div class="muted small">Categories — anything other than “${esc(S.perfect)}” counts as a mistake.</div>
+    <div class="qgrid">${S.cats.map((c,k)=>{
+      const val=v.cats[k]||S.perfect;
+      if(c.options&&c.options.length)return pickField('fCat'+k,esc(c.name),c.options,val);
+      return `<label>${esc(c.name)}<input id="fCat${k}" list="fCatList${k}" value="${esc(val)}"><datalist id="fCatList${k}">${seen(k).map(o=>`<option value="${esc(o)}">`).join('')}</datalist></label>`;
+    }).join('')}</div>
+    <label class="qblock">Notes on mistakes<textarea id="fNotes" rows="3" placeholder="What was wrong, and how to fix it next time">${esc(v.notes)}</textarea></label>
+    <div class="row"><button class="btn primary" id="fSave" onclick="qaSave()">${r?'Save changes':'Save to Reviewers Sheet'}</button><button class="btn" onclick="qaClose()">Cancel</button>
+      <div class="spacer"></div>${r?'<button class="btn" onclick="qaDelete()">Delete review</button>':''}</div>`;
+  f.hidden=false;
+  S.cats.forEach((c,k)=>{const el=document.getElementById('fCat'+k);el.oninput=el.onchange=qaPreview});
+  document.getElementById('fEp').onchange=qaLookup;
+  qaPreview();f.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function qaCats(){return QA.setup.cats.map((c,k)=>document.getElementById('fCat'+k).value.trim())}
+function qaPreview(){
+  const cats=qaCats(),ok=cats.filter(v=>!v||isPerfect(v)).length;
+  QA.setup.cats.forEach((c,k)=>{const el=document.getElementById('fCat'+k);el.classList.toggle('bad',!!cats[k]&&!isPerfect(cats[k]))});
+  const p=document.getElementById('qaPreview');p.textContent=`${ok} / ${cats.length} perfect · ${cats.length?fmt(100*ok/cats.length,0):0}%`;p.className='tag '+(ok===cats.length?'ok':'off');
+}
+async function qaLookup(){
+  const ldap=document.getElementById('fLdap').value, ep=document.getElementById('fEp').value.trim(), task=document.getElementById('fTask');
+  if(!ldap||!ep||task.value)return;
+  try{const x=await call('lookupEpisode',ldap,ep);if(x){task.value=x.task||'';if(x.date)document.getElementById('fEval').value=x.date;toast('Found it in '+nameOf(ldap)+'’s tab')}}catch(e){}
+}
+function qaClose(){document.getElementById('qaForm').hidden=true;qaEdit=null}
+async function qaSave(){
+  const g=id=>document.getElementById(id).value.trim();
+  const rec={row:qaEdit?qaEdit.row:0,origEp:qaEdit?qaEdit.ep:'',ldap:g('fLdap'),ep:g('fEp'),task:g('fTask'),dEval:g('fEval'),dRev:g('fRev'),
+    reviewer:g('fReviewer'),shift:g('fShift'),cats:qaCats().map(v=>v||QA.setup.perfect),notes:document.getElementById('fNotes').value.trim()};
+  if(!rec.ldap||!rec.ep)return toast('Pick the annotator and enter the Episode ID');
+  const b=document.getElementById('fSave');b.disabled=true;sync('busy','Saving review…');
+  try{
+    const saved=await call('saveReview',rec);
+    try{localStorage.setItem('qaLast',JSON.stringify({reviewer:rec.reviewer,shift:rec.shift}))}catch(e){}
+    const i=QA.rows.findIndex(x=>x.row===saved.row);if(i>-1)QA.rows[i]=saved;else QA.rows.push(saved);
+    qaClose();renderQA();
+    sync('ok','Saved '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}));
+    toast(`Saved: ${nameOf(saved.ldap)} ${fmt(saved.ok)} / ${fmt(saved.sam)} perfect (sheet row ${saved.row})`);
+  }catch(e){sync('err','Save failed: '+(e.message||e));toast('Save failed — '+(e.message||e))}
+  finally{b.disabled=false}
+}
+async function qaDelete(){
+  if(!qaEdit||!confirm(`Delete the review of ${qaEdit.ep} from the Reviewers Sheet? You can undo with File → Version history in Sheets.`))return;
+  const r=qaEdit;
+  if(await save('deleteReview',[r.row,r.ep],'Review deleted')){QA.rows=QA.rows.filter(x=>x.row!==r.row);qaClose();renderQA()}
+}
+
+/* ---------- preview data (only used outside Google) ---------- */
+const MOCK=(()=>{
+  const roster=[['heazannchuasing','Ann Chua Sing'],['amapaulanuevo','Ama Paula Nuevo'],['michaelpoblacion','Michael Poblacion'],['wynchristianrebanal','Wyn Christian Rebanal'],
+    ['jhasphercabrera','Jhaspher Cabrera'],['nikkomasagca','Nikko Masagca'],['honeygracefabia','Honey Grace Fabia'],['charlescaezargolosino','Charles Caezar Golosino']]
+    .map(([ldap,name])=>({ldap,name,inTeamDetails:true,hasTab:true,tab:ldap}));
+  const today=iso(new Date());const daily={};let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  roster.forEach((m,k)=>{daily[m.ldap]={};for(let i=0;i<120;i++){const d=addDays(today,-i);if(dow(d)>4)continue;if(rnd()<.08)continue;
+    const ep=Math.round(8+rnd()*10+k);daily[m.ldap][d]={ep,sec:Math.round(ep*(1500+rnd()*900)),qa:Math.round(rnd()*5),lab:Math.round(ep*(20+rnd()*15))}}});
+  const qaDaily={};roster.forEach(m=>{qaDaily[m.ldap]={};for(let i=0;i<120;i+=3){const sam=8;const err=rnd()<.2?1:0;qaDaily[m.ldap][addDays(today,-i)]={eps:2,sam,ok:sam-err,err}}});
+  const schedule={};roster.forEach((m,k)=>schedule[m.ldap]={row:k+5,timeIn:'3:00 PM',brk:'7:00 PM - 7:30 PM',timeOut:'11:00 PM'});
+  const attendance={[today]:{heazannchuasing:true,amapaulanuevo:true}};
+  const deductions={[today]:{amapaulanuevo:{coach:1,rev:0.5}}};
+  const issues=[
+    {sev:'warn',ldap:'amapaulanuevo',tab:'amapaulanuevo',row:2,col:'E',problem:'Zero duration',value:'0:00:00'},
+    {sev:'warn',ldap:'andreafondevilla',tab:'andreafondevilla',row:2,col:'C',problem:'Labels Count is not a number (looks like a name)',value:'rolandocabosura'},
+    {sev:'info',ldap:'heazannchuasing',tab:'heazannchuasing',row:'',col:'D',problem:'2410 rows have a time inside Date (other tabs use date only)',value:'',fix:{tab:'heazannchuasing',bulk:'dateOnly',label:'Strip the time from column D in heazannchuasing'}},
+    {sev:'warn',ldap:'heazannchuasing',tab:'Team Details',row:'',col:'LDAP',problem:'Member tab has no row in Team Details',value:''}];
+  return{getData:()=>({roster,daily,qaDaily,issues,issueCounts:null,attendance,schedule,deductions,sheetUrl:'#',today,mirror:{url:'',synced:'',auto:false,every:30}}),
+    syncMirror:()=>({mirror:{url:'#',synced:new Date().toISOString(),auto:true,every:30},members:roster.length,days:120}),
+    setupAutoSync:()=>({mirror:{url:'#',synced:new Date().toISOString(),auto:true,every:30},members:roster.length,days:120}),
+    setAttendance:()=>true,setDeduction:()=>true,saveShift:()=>true,applyFixes:f=>f.length,
+    getReviews:()=>{
+      const opts=['no changes needed','minor changes needed','major changes needed'];
+      const setup={perfect:'no changes needed',reviewers:['amapaulanuevo','heazannchuasing'],shifts:['core hours','OT hours'],
+        cats:['Start State','Strategy','Execution','End State'].map(name=>({name,options:opts}))};
+      const rows=[];let row=4600;
+      roster.slice(2).forEach(m=>{for(let i=0;i<3;i++){const cats=setup.cats.map(()=>rnd()<.12?opts[1]:opts[0]);const ok=cats.filter(c=>c===opts[0]).length;
+        rows.push({row:row++,ldap:m.ldap,ep:'2026-11-1'+i+'-0'+(100000+row)+'Z-tauron_3048-'+row.toString(16),task:'warehouse_llm_clippi_pet_store_goals_singles',dEval:addDays(today,-i),dRev:addDays(today,-i),
+          reviewer:'heazannchuasing',shift:'core hours',sam:4,ok,err:4-ok,cats,notes:ok<4?'Strategy step skipped the gripper reset':''})}});
+      return{setup,rows,today};
+    },
+    saveReview:rec=>{const ok=rec.cats.filter(c=>c==='no changes needed').length;return{...rec,row:rec.row||9999,sam:4,ok,err:4-ok}},
+    deleteReview:()=>true,lookupEpisode:()=>({task:'warehouse_llm_mobile_dining_room_goals_singles',date:today})};
+})();
+
+if(!LIVE)document.getElementById('demo').hidden=false;
+load(false);
+setInterval(()=>{if(!document.hidden)load(false)},30*60*1000); /* reload the page data every 30 minutes */
+</script>
+</body>
+</html>
