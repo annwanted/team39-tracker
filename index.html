@@ -1455,6 +1455,8 @@ $('rbDate').addEventListener('change', renderRbInfo); $('rbN').addEventListener(
 /** Every item taken on any loaded day, by episode. */
 function rbTakenAll() { const out = {}; Object.values(RBD).forEach(doc => Object.values(doc.items || {}).forEach(it => (out[it.ep] = out[it.ep] || []).push(it))); return out; }
 const rbReviewed = it => Q ? Q.rows.filter(x => x.ep === it.ep && revDay(x) && revDay(x) >= it.day).sort((a, b) => b.row - a.row)[0] : null;
+/** A pick counts toward your number while it waits for you, or once you reviewed it yourself. One someone else reviewed doesn't, so Pick randomly gives you a fresh one for it. */
+const rbCountsForMe = it => { if (!it || it.by !== meLdap) return false; const rv = rbReviewed(it); return !rv || String(rv.reviewer || '').trim().toLowerCase() === meLdap; };
 var rbInfo = null;
 /** The note under Pick randomly: who has no worked episodes yet, who is short, who is complete. */
 function renderRbInfo() {
@@ -1464,7 +1466,7 @@ function renderRbInfo() {
   const nm = r => esc(nameOf(r.ldap).split(' ')[0]);
   // Live count per member for this work date, so a Release or someone else's pick shows at once.
   const live = {}, seen = new Set();
-  Object.values(RBD).forEach(doc => Object.values((doc && doc.items) || {}).forEach(it => { if (it.workDate === date && it.by === meLdap && !seen.has(it.ep)) { seen.add(it.ep); live[it.ldap] = (live[it.ldap] || 0) + 1; } }));
+  Object.values(RBD).forEach(doc => Object.values((doc && doc.items) || {}).forEach(it => { if (it.workDate === date && rbCountsForMe(it) && !seen.has(it.ep)) { seen.add(it.ep); live[it.ldap] = (live[it.ldap] || 0) + 1; } }));
   rbInfo.report.forEach(r => { r.have = live[r.ldap] || 0; });
   const none = rbInfo.report.filter(r => r.have < n && !r.worked), shortL = rbInfo.report.filter(r => r.have < n && r.worked), full = rbInfo.report.filter(r => r.have >= n);
   const lines = [];
@@ -1472,7 +1474,7 @@ function renderRbInfo() {
   if (shortL.length) lines.push('<b>Still short of ' + n + ':</b> ' + shortL.map(r => nm(r) + ' (' + r.have + ' of ' + n + ')').join(', ') + '. Pick again to top them up once they have more worked episodes.');
   if (full.length) lines.push('<b>Complete (' + n + '/' + n + '):</b> ' + full.map(nm).join(', '));
   if (rbInfo.n !== n) lines.push('Episodes per member changed to ' + n + '. Pick again to top everyone up to it.');
-  if (lines.length) lines.unshift('<span class="small">Your own picks for ' + esc(longDate(date)) + ' (' + esc(nameOf(meLdap).split(' ')[0]) + '). Others’ picks don’t count toward your number.</span>');
+  if (lines.length) lines.unshift('<span class="small">Your own picks for ' + esc(longDate(date)) + ' (' + esc(nameOf(meLdap).split(' ')[0]) + '). Others’ picks, and your picks someone else reviewed, don’t count toward your number.</span>');
   box.innerHTML = lines.map(l => '<div>' + l + '</div>').join('');
   box.hidden = !lines.length;
 }
@@ -1513,8 +1515,10 @@ function renderBucket() {
         '<td class="small">' + esc(nameOf(it.by).split(' ')[0]) + ' <span class="muted">' + (it.at ? new Date(it.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '') + '</span></td>';
       if (rv) return '<tr><td></td>' + info + cats.map((c, k) => '<td>' + (isPerfect(rv.cats[k]) ? '<span class="tag ok">✓</span>' : '<span class="tag off">' + esc(rv.cats[k] || '—') + '</span>') + '</td>').join('') +
         (S.notesCol > -1 ? '<td class="ellip small" title="' + esc(rv.notes) + '">' + esc(rv.notes) + '</td>' : '') +
-        '<td><span class="tag ok">Reviewed · row ' + rv.row + ' · ' + fmt(rv.ok) + ' / ' + fmt(rv.sam) + '</span></td><td></td></tr>';
+        '<td><span class="tag ok">Reviewed by ' + esc((nameOf(String(rv.reviewer || '').trim().toLowerCase()) || rv.reviewer || '?').split(' ')[0]) + ' · row ' + rv.row + ' · ' + fmt(rv.ok) + ' / ' + fmt(rv.sam) + '</span></td><td></td></tr>';
       if (!S) return '<tr><td></td>' + info + '<td colspan="' + (cols - 4) + '" class="muted small">Loading the Reviewers Sheet…</td></tr>';
+      // only the person who took an episode reviews it here, so the Team Lead's and the reviewer's lists stay separate
+      if (it.by !== me) return '<tr><td></td>' + info + '<td colspan="' + (cols - 4) + '" class="muted small">' + esc(nameOf(it.by).split(' ')[0]) + '’s pick: only ' + esc(nameOf(it.by).split(' ')[0]) + ' reviews it here</td></tr>';
       return '<tr' + (d.on ? ' class="ready"' : '') + '><td><input type="checkbox" aria-label="Done reviewing" data-rbon="' + esc(it.ep) + '"' + (d.on ? ' checked' : '') + (ok ? '' : ' disabled') + '></td>' + info +
         cats.map((c, k) => catCell(it, k)).join('') +
         (S.notesCol > -1 ? '<td><input type="text" data-rbep="' + esc(it.ep) + '" data-rbk="notes" value="' + esc(d.notes) + '" placeholder="mistake notes"' + (ok ? '' : ' disabled') + '></td>' : '') +
@@ -1542,7 +1546,7 @@ function rbStoreDrafts() {
 }
 function rbDraftOf(ep) { rbLoadDrafts(); if (!rbDrafts[ep]) rbDrafts[ep] = { cats: Q ? Q.setup.cats.map(() => Q.setup.perfect) : [], notes: '', on: false }; const d = rbDrafts[ep]; if (Q && d.cats.length !== Q.setup.cats.length) d.cats = Q.setup.cats.map(() => Q.setup.perfect); return d; }
 /** Ticked, unreviewed rows of the day shown. */
-function rbReadyItems() { rbLoadDrafts(); const day = $('rbDay').value || (D && D.today), doc = RBD[day]; return Object.values((doc && doc.items) || {}).filter(it => rbDrafts[it.ep] && rbDrafts[it.ep].on && !rbReviewed(it)); }
+function rbReadyItems() { rbLoadDrafts(); const day = $('rbDay').value || (D && D.today), doc = RBD[day]; return Object.values((doc && doc.items) || {}).filter(it => it.by === meLdap && rbDrafts[it.ep] && rbDrafts[it.ep].on && !rbReviewed(it)); }
 function rbSaveState() {
   const n = rbReadyItems().length, ok = canPick(meLdap) && !!Q;
   $('rbAllOn').hidden = $('rbAllOff').hidden = !canPick(meLdap);
@@ -1687,7 +1691,7 @@ $('rbPick').onclick = async () => {
       // Episodes I already took for this work date, per member (today's fresh record plus earlier days'). Other pickers' picks don't count toward my number,
       // but an episode anyone has taken is still never taken twice (seen covers everyone's).
       const have = {}, seen = new Set();
-      const count = it => { if (it && it.workDate === date && !seen.has(it.ep)) { seen.add(it.ep); if (it.by === meLdap) have[it.ldap] = (have[it.ldap] || 0) + 1; } };
+      const count = it => { if (it && it.workDate === date && !seen.has(it.ep)) { seen.add(it.ep); if (rbCountsForMe(it)) have[it.ldap] = (have[it.ldap] || 0) + 1; } };
       Object.values(items).forEach(count);
       Object.entries(RBD).forEach(([d, doc]) => { if (d !== today) Object.values((doc && doc.items) || {}).forEach(count); });
       people.forEach(m => {
