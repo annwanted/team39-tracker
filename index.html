@@ -557,13 +557,14 @@ $('quotaIn').value = QUOTA;
 $('quotaIn').onchange = e => { const v = Math.round(+e.target.value); if (!(v > 0)) { e.target.value = QUOTA; return; } QUOTA = v; try { localStorage.setItem('t39quota', v); } catch (x) {} renderAttendance(); };
 /** Usual shift length in hours (Time Out − Time In − 30-min break), e.g. 16:00–00:00 → 7.5. */
 function shiftLen(ldap) { const s = defShift(ldap); return Math.max(1, (s.tout - s.tin) * 24 - 0.5); }
-/** Annotators only. Target = quota × hours worked today (core + extra) ÷ usual shift length. */
+/** Annotators only. Target = quota × (hours worked today (core + extra) − deductive minutes: editing feedback, coaching / huddle, text labels, review time) ÷ usual shift length. The standard 30-minute breaktime is part of every shift, so it doesn't lower the target. */
 function quotaOf(r) {
   const role = ((D.roster[r.ldap] || {}).role || '').toLowerCase();
   if (role && !/annotator/.test(role)) return null;
-  const full = shiftLen(r.ldap), hours = r.present && r.totHours > 0 ? r.totHours : full;
-  const target = Math.max(1, Math.round(QUOTA * hours / full));
-  return { target, hours, full, done: r.dqa, met: r.dqa >= target, pct: Math.min(100, 100 * r.dqa / target) };
+  const full = shiftLen(r.ldap), worked = r.present && r.totHours > 0 ? r.totHours : full;
+  const dedMin = MINS.reduce((a, [k]) => a + (num(r[k]) || 0), 0), hours = Math.max(0, worked - dedMin / 60);
+  const target = Math.max(0, Math.round(QUOTA * hours / full));
+  return { target, hours, worked, dedMin, full, done: r.dqa, met: r.dqa >= target, pct: target ? Math.min(100, 100 * r.dqa / target) : 100 };
 }
 function quotaHtml(r) {
   const qo = quotaOf(r), parts = [];
@@ -571,8 +572,9 @@ function quotaHtml(r) {
   const why = parts.length ? 'also ' + parts.join(' · ') : (r.dqa ? '' : 'nothing logged yet');
   if (!qo) return '<div class="quota"><div class="qline"><span>Data QA today</span><b>' + fmt(r.dqa) + '</b></div><div class="muted small">' + esc(why ? why + ' · ' : '') + 'no quota for this role</div></div>';
   const left = qo.target - qo.done;
-  return '<div class="quota' + (qo.met ? ' met' : '') + '" title="Quota ' + QUOTA + ' data QA per ' + fmt(qo.full, 2) + ' h shift × ' + fmt(qo.hours, 2) + ' h today">' +
+  return '<div class="quota' + (qo.met ? ' met' : '') + '" title="Quota ' + QUOTA + ' data QA per ' + fmt(qo.full, 2) + ' h shift × ' + fmt(qo.hours, 2) + ' h today (' + fmt(qo.worked, 2) + ' h worked' + (qo.dedMin ? ' − ' + fmt(qo.dedMin) + ' min deductive' : '') + ')">' +
     '<div class="qline"><span>Data QA today</span><span><b>' + fmt(qo.done) + '</b> / ' + fmt(qo.target) + '</span></div>' +
+    (qo.dedMin ? '<div class="muted small">target lowered for ' + fmt(qo.dedMin) + ' min deductive</div>' : '') +
     '<div class="qbar" role="progressbar" aria-valuemin="0" aria-valuemax="' + qo.target + '" aria-valuenow="' + qo.done + '"><i style="width:' + qo.pct.toFixed(1) + '%"></i></div>' +
     '<div class="qline"><span>' + esc(why) + '</span>' + (qo.met ? '<span class="tag ok">Quota met' + (left < 0 ? ' +' + (-left) : '') + '</span>' : '<span class="tag off">' + left + ' to go</span>') + '</div></div>';
 }
