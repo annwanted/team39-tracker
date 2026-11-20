@@ -282,6 +282,7 @@ tr.rbhead td{background:var(--soft);font-weight:600;padding-block:6px}
     <div id="rbInfo" class="banner info" style="margin:10px 0 0" hidden></div>
   </div>
   <div class="kpis" id="rbKpis"></div>
+  <div class="muted small" id="rbHidden" style="margin:-4px 0 10px" hidden></div>
   <div class="card">
     <div class="row">
       <b>Review bucket</b>
@@ -1456,6 +1457,7 @@ $('rbDate').addEventListener('change', renderRbInfo); $('rbN').addEventListener(
 function rbTakenAll() { const out = {}; Object.values(RBD).forEach(doc => Object.values(doc.items || {}).forEach(it => (out[it.ep] = out[it.ep] || []).push(it))); return out; }
 const rbReviewed = it => Q ? Q.rows.filter(x => x.ep === it.ep && revDay(x) && revDay(x) >= it.day).sort((a, b) => b.row - a.row)[0] : null;
 /** A pick counts toward your number while it waits for you, or once you reviewed it yourself. One someone else reviewed doesn't, so Pick randomly gives you a fresh one for it. */
+const rbOtherReviewed = it => { const rv = rbReviewed(it), who = rv ? String(rv.reviewer || '').trim().toLowerCase() : ''; return !!who && who !== it.by; };
 const rbCountsForMe = it => { if (!it || it.by !== meLdap) return false; const rv = rbReviewed(it); return !rv || String(rv.reviewer || '').trim().toLowerCase() === meLdap; };
 var rbInfo = null;
 /** The note under Pick randomly: who has no worked episodes yet, who is short, who is complete. */
@@ -1491,7 +1493,11 @@ function renderBucket() {
   $('rbPick').disabled = !ok || !RDB || rbBusy;
   $('rbClear').hidden = !ok || !RDB;
   const day = $('rbDay').value || D.today, doc = RBD[day], by = $('rbBy').value;
-  const items = Object.values((doc && doc.items) || {}).filter(it => !by || it.by === by);
+  // a pick someone else already reviewed is no longer the picker's work: it's left out of the bucket (Pick randomly replaces it), so nothing shows twice
+  const all = Object.values((doc && doc.items) || {}).filter(it => !by || it.by === by);
+  const items = all.filter(it => !rbOtherReviewed(it)), gone = all.length - items.length;
+  $('rbHidden').hidden = !gone;
+  $('rbHidden').textContent = gone ? gone + ' pick' + (gone === 1 ? '' : 's') + ' on this day ' + (gone === 1 ? 'was' : 'were') + ' reviewed by someone other than the person who took ' + (gone === 1 ? 'it' : 'them') + ', so ' + (gone === 1 ? 'it’s' : 'they’re') + ' left out of the bucket. Pick randomly gives fresh episodes in their place.' : '';
   const done = items.filter(rbReviewed);
   $('rbKpis').innerHTML = [[items.length, 'Taken on ' + longDate(day)], [done.length, 'Reviewed'], [items.length - done.length, 'Still to review'],
     [new Set(items.map(it => it.ldap)).size, 'Members covered']].map(([v, l]) => '<div class="kpi"><b>' + v + '</b><span>' + l + '</span></div>').join('');
