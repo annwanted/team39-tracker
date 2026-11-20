@@ -1743,7 +1743,10 @@ $('rbClear').onclick = () => {
 };
 $('rbCopy').onclick = async () => {
   const day = $('rbDay').value || D.today, by = $('rbBy').value, doc = RBD[day];
-  const text = Object.values((doc && doc.items) || {}).filter(it => (!by || it.by === by) && !rbReviewed(it)).map(it => it.ep).join('\n');
+  // same order as the list: annotators in the team's order, then each one's episodes in tab order (not by pick time)
+  const order = D.members.map(m => m.ldap), pos = l => { const i = order.indexOf(l); return i < 0 ? 999 : i; };
+  const text = Object.values((doc && doc.items) || {}).filter(it => (!by || it.by === by) && !rbReviewed(it))
+    .sort((a, b) => pos(a.ldap) - pos(b.ldap) || String(a.ldap).localeCompare(String(b.ldap)) || a.row - b.row).map(it => it.ep).join('\n');
   if (!text) return toast('Nothing left to review');
   try { await navigator.clipboard.writeText(text); toast('Copied ' + text.split('\n').length + ' Episode IDs'); } catch (x) { toast('Copy failed — select the IDs in the table'); }
 };
