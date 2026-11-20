@@ -1732,7 +1732,7 @@ $('rbClear').onclick = () => {
       const r = await rbWithDay(day, items => { let n = 0; eps.forEach(ep => { if (items[ep] && items[ep].by === meLdap) { delete items[ep]; n++; } }); return { changed: n > 0, n }; });
       eps.forEach(ep => { if (typeof rbDrafts !== 'undefined') delete rbDrafts[ep]; });
       status('ok', 'Cleared ' + nowT());
-      toast('Cleared ' + r.n + ' pick' + (r.n === 1 ? '' : 's') + ' from ' + longDate(day) + '. Your reviewed ones and other people's picks were kept.');
+      toast('Cleared ' + r.n + ' pick' + (r.n === 1 ? '' : 's') + ' from ' + longDate(day) + '. Your reviewed ones and other people’s picks were kept.');
     } catch (x) { status('err', 'Not cleared'); toast('Not cleared — ' + errText(x)); }
     finally { rbBusy = false; renderBucket(); }
   });
